@@ -16,7 +16,7 @@ namespace EscapeGame.Editor
 
         static readonly Color k_PanelColor = new Color(0f, 0f, 0f, 0.75f);
         static readonly Color k_SubmitColor = new Color(0.25f, 0.62f, 0.38f, 1f);
-        static readonly Color k_TextColor = new Color(0.92f, 0.94f, 0.97f, 1f);
+        internal static readonly Color k_TextColor = new Color(0.92f, 0.94f, 0.97f, 1f);
 
         [MenuItem("GameObject/Escape Game/Écran d'énigme - Cadenas à code", false, 10)]
         static void CreateDialCodeScreen(MenuCommand command)
@@ -93,7 +93,7 @@ namespace EscapeGame.Editor
             button.colors = colors;
         }
 
-        static GameObject CreateScreenRoot(string name, MenuCommand command, Vector2 size)
+        internal static GameObject CreateScreenRoot(string name, MenuCommand command, Vector2 size)
         {
             var root = new GameObject(name, typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler),
                 typeof(CanvasGroup), typeof(TrackedDeviceGraphicRaycaster), typeof(PuzzleScreen));
@@ -126,14 +126,14 @@ namespace EscapeGame.Editor
             return root;
         }
 
-        static void CreatePanelBackground(Transform parent)
+        internal static void CreatePanelBackground(Transform parent)
         {
             var bg = CreateImage(parent, "Fond", k_PanelColor, Vector2.zero, Vector2.zero);
             Stretch(bg.rectTransform);
             bg.raycastTarget = true; // bloque le rayon : évite de téléporter "à travers" l'écran
         }
 
-        static Image CreateImage(Transform parent, string name, Color color, Vector2 topPosition, Vector2 size)
+        internal static Image CreateImage(Transform parent, string name, Color color, Vector2 topPosition, Vector2 size)
         {
             var go = new GameObject(name, typeof(RectTransform), typeof(Image));
             SetupRect(go, parent, topPosition, size);
@@ -144,7 +144,7 @@ namespace EscapeGame.Editor
             return image;
         }
 
-        static TextMeshProUGUI CreateText(Transform parent, string name, string content, float fontSize,
+        internal static TextMeshProUGUI CreateText(Transform parent, string name, string content, float fontSize,
             FontStyles style, Vector2 topPosition, Vector2 size)
         {
             var go = new GameObject(name, typeof(RectTransform), typeof(TextMeshProUGUI));
@@ -161,7 +161,7 @@ namespace EscapeGame.Editor
         }
 
         // Ancre en haut au centre : topPosition.y est négatif, mesuré depuis le haut du parent.
-        static void SetupRect(GameObject go, Transform parent, Vector2 topPosition, Vector2 size)
+        internal static void SetupRect(GameObject go, Transform parent, Vector2 topPosition, Vector2 size)
         {
             go.layer = LayerMask.NameToLayer("UI");
             var rect = go.GetComponent<RectTransform>();
@@ -172,7 +172,7 @@ namespace EscapeGame.Editor
             rect.sizeDelta = size;
         }
 
-        static void Stretch(RectTransform rect)
+        internal static void Stretch(RectTransform rect)
         {
             rect.anchorMin = Vector2.zero;
             rect.anchorMax = Vector2.one;
@@ -184,7 +184,7 @@ namespace EscapeGame.Editor
         /// <summary>
         /// Les rayons / doigts XR ne cliquent sur l'UI que si l'EventSystem utilise XRUIInputModule.
         /// </summary>
-        static void EnsureXREventSystem()
+        internal static void EnsureXREventSystem()
         {
             var eventSystem = Object.FindFirstObjectByType<EventSystem>();
             if (eventSystem == null)
