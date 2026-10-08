@@ -25,7 +25,7 @@ namespace EscapeGame.Editor
 
         const string k_FontPath = "Assets/Fonts/Emblema_One/EmblemaOne-Regular.ttf";
         const string k_FontAssetPath = "Assets/Fonts/Emblema_One/EmblemaOne-Regular SDF.asset";
-        const string k_BackgroundPath = "Assets/EscapeGame/Menu/Fond menu.jpg";
+        const string k_LogoPath = "Assets/EscapeGame/Menu/Logo Alone At Night.png";
 
         // Écran 16:9 en unités UI ; au lancement, MainMenu l'ajuste à la taille réelle de la dalle.
         static readonly Vector2 k_ScreenSize = new Vector2(1600f, 900f);
@@ -99,7 +99,7 @@ namespace EscapeGame.Editor
         static GameObject BuildPrefab()
         {
             var font = GetOrCreateFontAsset();
-            var background = GetBackgroundSprite();
+            var logo = GetSprite(k_LogoPath);
 
             var root = new GameObject(k_RootName);
             try
@@ -128,7 +128,7 @@ namespace EscapeGame.Editor
                 menuPage.transform.SetParent(screen, false);
                 Stretch((RectTransform)menuPage.transform);
                 menu.menuGroup = menuPage.GetComponent<CanvasGroup>();
-                menu.playButton = BuildMenuPage(menuPage.transform, font, background);
+                menu.playButton = BuildMenuPage(menuPage.transform, font, logo);
 
                 // Neige par-dessus tout (la texture est générée au lancement).
                 var noise = new GameObject("Neige", typeof(RectTransform), typeof(RawImage));
@@ -147,36 +147,47 @@ namespace EscapeGame.Editor
             }
         }
 
-        static Button BuildMenuPage(Transform page, TMP_FontAsset titleFont, Sprite background)
+        static Button BuildMenuPage(Transform page, TMP_FontAsset titleFont, Sprite logo)
         {
-            var bg = NewImage(page, "Fond", Color.white);
+            var bg = NewImage(page, "Fond", new Color32(10, 11, 13, 255));
             Stretch(bg.rectTransform);
-            bg.sprite = background;
-            bg.color = background != null ? new Color(0.75f, 0.75f, 0.75f) : new Color32(10, 11, 13, 255);
 
-            // Logo, centré.
-            var amber = ColorUtility.ToHtmlStringRGB(k_Amber);
-            var title = NewText(page, "Logo", $"Alone <color=#{amber}>At</color> Night", 150, k_Cream);
-            if (titleFont != null)
-                title.font = titleFont;
-            title.alignment = TextAlignmentOptions.Center;
-            title.textWrappingMode = TextWrappingModes.NoWrap;
-            Place(title.rectTransform, new Vector2(0f, 150f), new Vector2(1500f, 220f));
+            // Logo à gauche (la porte remplace le « o », la clé le « t »), légèrement teinté crème.
+            const float logoHeight = 800f;
+            if (logo != null)
+            {
+                var image = NewImage(page, "Logo", k_Cream);
+                image.sprite = logo;
+                image.preserveAspect = true;
+                var width = logoHeight * logo.rect.width / logo.rect.height;
+                Place(image.rectTransform, new Vector2(-360f, 0f), new Vector2(width, logoHeight));
+            }
+            else
+            {
+                var amber = ColorUtility.ToHtmlStringRGB(k_Amber);
+                var title = NewText(page, "Logo", $"Alone\n<color=#{amber}>At</color>\nNight", 150, k_Cream);
+                if (titleFont != null)
+                    title.font = titleFont;
+                title.alignment = TextAlignmentOptions.Center;
+                Place(title.rectTransform, new Vector2(-360f, 0f), new Vector2(720f, logoHeight));
+            }
 
+            // À droite : sous-titre et bouton Jouer.
+            const float right = 400f;
             var subtitle = NewText(page, "Sous-titre", "ESCAPE GAME VR", 34, k_Muted);
             subtitle.characterSpacing = 25f;
             subtitle.alignment = TextAlignmentOptions.Center;
-            Place(subtitle.rectTransform, new Vector2(0f, 20f), new Vector2(800f, 50f));
+            Place(subtitle.rectTransform, new Vector2(right, 110f), new Vector2(600f, 50f));
             var lineLeft = NewImage(page, "Filet gauche", k_Amber);
-            Place(lineLeft.rectTransform, new Vector2(-290f, 20f), new Vector2(90f, 3f));
+            Place(lineLeft.rectTransform, new Vector2(right - 270f, 110f), new Vector2(60f, 3f));
             var lineRight = NewImage(page, "Filet droit", k_Amber);
-            Place(lineRight.rectTransform, new Vector2(290f, 20f), new Vector2(90f, 3f));
+            Place(lineRight.rectTransform, new Vector2(right + 270f, 110f), new Vector2(60f, 3f));
 
             // Bouton Jouer : cadre ambré, qui se remplit quand le rayon le survole.
             var frame = NewImage(page, "Jouer", k_Amber);
             frame.sprite = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/UISprite.psd");
             frame.type = Image.Type.Sliced;
-            Place(frame.rectTransform, new Vector2(0f, -190f), new Vector2(420f, 110f));
+            Place(frame.rectTransform, new Vector2(right, -20f), new Vector2(420f, 110f));
             var button = frame.gameObject.AddComponent<Button>();
             button.targetGraphic = frame;
             var colors = button.colors;
@@ -187,14 +198,24 @@ namespace EscapeGame.Editor
             colors.fadeDuration = 0.08f;
             button.colors = colors;
 
+            // Cadre fixe (4 traits) : reste bien visible, alors que le fond du bouton ne s'allume qu'au survol.
+            var w = frame.rectTransform.sizeDelta.x;
+            var h = frame.rectTransform.sizeDelta.y;
+            foreach (var (pos, size) in new[]
+                     {
+                         (new Vector2(0f, h / 2f), new Vector2(w, 3f)), (new Vector2(0f, -h / 2f), new Vector2(w, 3f)),
+                         (new Vector2(-w / 2f, 0f), new Vector2(3f, h)), (new Vector2(w / 2f, 0f), new Vector2(3f, h)),
+                     })
+                Place(NewImage(frame.transform, "Cadre", k_Amber).rectTransform, pos, size);
+
             var label = NewText(frame.transform, "Label", "JOUER", 56, k_Cream);
             label.characterSpacing = 15f;
             label.alignment = TextAlignmentOptions.Center;
             Stretch(label.rectTransform);
 
-            var hint = NewText(page, "Aide", "Visez « Jouer » avec la manette et appuyez sur la gâchette", 26, k_Dim);
+            var hint = NewText(page, "Aide", "Visez « Jouer » avec la manette\net appuyez sur la gâchette", 26, k_Dim);
             hint.alignment = TextAlignmentOptions.Center;
-            Place(hint.rectTransform, new Vector2(0f, -360f), new Vector2(1200f, 40f));
+            Place(hint.rectTransform, new Vector2(right, -150f), new Vector2(600f, 80f));
 
             // Seuls le fond (bloque les rayons derrière l'écran) et le bouton reçoivent les rayons.
             foreach (var graphic in page.GetComponentsInChildren<Graphic>(true))
@@ -264,16 +285,17 @@ namespace EscapeGame.Editor
             return asset;
         }
 
-        static Sprite GetBackgroundSprite()
+        static Sprite GetSprite(string path)
         {
-            if (AssetImporter.GetAtPath(k_BackgroundPath) is TextureImporter importer &&
+            if (AssetImporter.GetAtPath(path) is TextureImporter importer &&
                 importer.textureType != TextureImporterType.Sprite)
             {
                 importer.textureType = TextureImporterType.Sprite;
+                importer.alphaIsTransparency = true;
                 importer.mipmapEnabled = true; // vu de loin dans le casque : évite le scintillement
                 importer.SaveAndReimport();
             }
-            return AssetDatabase.LoadAssetAtPath<Sprite>(k_BackgroundPath);
+            return AssetDatabase.LoadAssetAtPath<Sprite>(path);
         }
     }
 }
