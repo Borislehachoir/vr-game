@@ -144,6 +144,7 @@ namespace EscapeGame
                 if (grab != null && grab.isSelected)
                     continue; // tenu en main : ne pas l'arracher de la main
                 body.position += delta;
+                ReturnToStartOnFloor.NotifyCarried(body); // déplacé par le tiroir, pas un bug de traversée
             }
         }
 

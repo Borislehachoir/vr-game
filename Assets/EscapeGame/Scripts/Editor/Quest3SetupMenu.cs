@@ -91,7 +91,7 @@ namespace EscapeGame.Editor
             var renderers = FindStaticCandidates(scene);
             var lights = scene.GetRootGameObjects()
                 .SelectMany(r => r.GetComponentsInChildren<Light>(true))
-                .Where(l => l.type != LightType.Directional)
+                .Where(l => l.type != LightType.Directional && l.GetComponentInParent<TvScreen>(true) == null) // lueur de la télé : reste en temps réel
                 .ToList();
 
             if (!EditorUtility.DisplayDialog("Quest 3 - éclairage précalculé",
@@ -188,7 +188,8 @@ namespace EscapeGame.Editor
                     r.GetComponentInParent<Canvas>(true) != null ||             // écrans d'énigme
                     r.GetComponent<TMP_Text>() != null ||                       // textes 3D
                     r.GetComponent<WritableSurface>() != null ||                // zone d'écriture (shader non éclairé)
-                    r.GetComponentInParent<BoardWordPuzzle>(true) != null)      // traits et coche (non éclairés)
+                    r.GetComponentInParent<BoardWordPuzzle>(true) != null ||   // traits et coche (non éclairés)
+                    r.GetComponentInParent<TvScreen>(true) != null)            // écran de télé (change de matériau)
                     continue;
                 result.Add(r);
             }
