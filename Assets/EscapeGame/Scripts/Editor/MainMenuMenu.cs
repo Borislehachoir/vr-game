@@ -22,6 +22,8 @@ namespace EscapeGame.Editor
         const string k_MenuScenePath = "Assets/Scenes/Menu.unity";
         const string k_PrefabPath = "Assets/EscapeGame/Menu/Menu principal.prefab";
         const string k_RootName = "Menu principal";
+        const string k_EyesName = "Yeux du joueur";
+        const float k_DefaultEyeHeight = 1.15f; // position de départ du point, à ajuster à la main
 
         const string k_FontPath = "Assets/Fonts/Emblema_One/EmblemaOne-Regular.ttf";
         const string k_FontAssetPath = "Assets/Fonts/Emblema_One/EmblemaOne-Regular SDF.asset";
@@ -60,6 +62,17 @@ namespace EscapeGame.Editor
             var instance = (GameObject)PrefabUtility.InstantiatePrefab(prefab, scene);
             instance.name = k_RootName;
 
+            // Point "Yeux du joueur" : objet de la scène, conservé tel quel quand on relance le menu.
+            var eyes = scene.GetRootGameObjects().FirstOrDefault(g => g.name == k_EyesName);
+            var eyesCreated = eyes == null;
+            if (eyesCreated)
+            {
+                eyes = new GameObject(k_EyesName);
+                SceneManager.MoveGameObjectToScene(eyes, scene);
+                PlaceEyesOnSofa(scene, eyes.transform);
+            }
+            instance.GetComponent<MainMenu>().seatEyes = eyes.transform;
+
             // Ce que le menu trouvera au lancement, pour prévenir tout de suite s'il manque quelque chose.
             var transforms = scene.GetRootGameObjects().SelectMany(r => r.GetComponentsInChildren<Transform>(true)).ToList();
             bool Has(params string[] names) =>
@@ -82,8 +95,42 @@ namespace EscapeGame.Editor
                 $"• Télé : {(hasTv ? "trouvée" : "⚠ INTROUVABLE (objet « TV »)")}\n" +
                 $"• Canapé : {(hasSofa ? "trouvé" : "⚠ INTROUVABLE (objet « sofa »)")}\n" +
                 $"• Joueur (XR Origin) : {(hasPlayer ? "trouvé" : "⚠ INTROUVABLE")}\n" +
-                "• Scène Menu placée en premier dans la liste des scènes du build\n\n" +
+                "• Scène Menu placée en premier dans la liste des scènes du build\n" +
+                (eyesCreated
+                    ? $"• Objet « {k_EyesName} » créé sur le canapé : déplacez-le pour régler la caméra (flèche bleue = regard)\n\n"
+                    : $"• Objet « {k_EyesName} » existant conservé\n\n") +
                 "Aucune autre scène n'a été modifiée.", "OK");
+        }
+
+        // Première position du point : au milieu du canapé, à hauteur d'yeux, tourné vers la télé.
+        static void PlaceEyesOnSofa(Scene scene, Transform eyes)
+        {
+            var transforms = scene.GetRootGameObjects().SelectMany(r => r.GetComponentsInChildren<Transform>(true)).ToList();
+            Transform Find(params string[] names) =>
+                transforms.FirstOrDefault(t => names.Any(n => string.Equals(t.name, n, System.StringComparison.OrdinalIgnoreCase)));
+            var sofa = Find("sofa", "Canapé", "Canape", "Couch");
+            var tvScreen = transforms.Select(t => t.GetComponent<TvScreen>()).FirstOrDefault(t => t != null);
+            var tv = tvScreen != null ? tvScreen.transform : Find("TV", "Télé", "Television");
+            if (sofa == null)
+                return;
+
+            var sofaBounds = GetBounds(sofa);
+            var forward = tv != null ? GetBounds(tv).center - sofaBounds.center : Vector3.forward;
+            forward.y = 0f;
+            forward = forward.sqrMagnitude > 0.0001f ? forward.normalized : Vector3.forward;
+            eyes.position = new Vector3(sofaBounds.center.x, sofaBounds.min.y + k_DefaultEyeHeight, sofaBounds.center.z) + forward * 0.1f;
+            eyes.rotation = Quaternion.LookRotation(forward, Vector3.up);
+        }
+
+        static Bounds GetBounds(Transform t)
+        {
+            var renderers = t.GetComponentsInChildren<Renderer>(true);
+            if (renderers.Length == 0)
+                return new Bounds(t.position, Vector3.zero);
+            var b = renderers[0].bounds;
+            foreach (var r in renderers)
+                b.Encapsulate(r.bounds);
+            return b;
         }
 
         // Scène Menu en premier : c'est elle qui se lance au démarrage du jeu.

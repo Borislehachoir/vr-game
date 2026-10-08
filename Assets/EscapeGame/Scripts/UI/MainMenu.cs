@@ -36,7 +36,8 @@ namespace EscapeGame
         [Tooltip("Le canapé. Vide : l'objet nommé « sofa » ou « Canapé ».")]
         public GameObject sofa;
         public XROrigin origin;
-        [Tooltip("Position des yeux du joueur assis. Vide : calculée à partir du canapé.")]
+        [Tooltip("Objet « Yeux du joueur » : la caméra se place exactement dessus et regarde le long de sa flèche bleue. " +
+                 "Vide : position calculée à partir du canapé.")]
         public Transform seatEyes;
         [Tooltip("Où le joueur se lève après « Jouer ». Vide : devant le canapé, côté télé.")]
         public Transform standPoint;
@@ -334,11 +335,12 @@ namespace EscapeGame
         {
             if (origin == null)
                 return;
-            var forward = m_LookAt - m_SeatEyes;
+            // Point "Yeux du joueur" : la caméra regarde le long de sa flèche bleue. Sinon, vers la télé.
+            var forward = seatEyes != null ? seatEyes.forward : m_LookAt - m_SeatEyes;
             forward.y = 0f;
             if (forward.sqrMagnitude > 0.0001f)
                 origin.MatchOriginUpCameraForward(Vector3.up, forward.normalized);
-            // Yeux à hauteur "assis", que le joueur soit réellement assis ou debout.
+            // La caméra est posée exactement sur le point, quelle que soit la taille ou la posture réelle du joueur.
             origin.MoveCameraToWorldLocation(m_SeatEyes);
             Physics.SyncTransforms();
         }
@@ -482,6 +484,16 @@ namespace EscapeGame
             image.raycastTarget = false;
             image.enabled = false;
             return image;
+        }
+
+        // Repère visible dans la vue Scene : sphère = tête du joueur, trait = direction du regard.
+        void OnDrawGizmos()
+        {
+            if (seatEyes == null)
+                return;
+            Gizmos.color = new Color(0.84f, 0.63f, 0.36f);
+            Gizmos.DrawWireSphere(seatEyes.position, 0.12f);
+            Gizmos.DrawLine(seatEyes.position, seatEyes.position + seatEyes.forward * 0.6f);
         }
 
         void OnDestroy()
