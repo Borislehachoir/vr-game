@@ -2,15 +2,19 @@ using System.Collections;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+using UnityEngine.XR.Interaction.Toolkit.UI;
 
 namespace EscapeGame
 {
     /// <summary>
     /// Pièce de puzzle (Image avec le PNG de la pièce). Se déplace en la visant avec le rayon et en maintenant
     /// la gâchette, et se verrouille quand elle est lâchée près de sa place.
+    /// Elle suit le rayon dès qu'on appuie (sans seuil de glissement) et même si le rayon va vite :
+    /// sa position est le point où le rayon traverse le plan de l'écran.
     /// </summary>
     [RequireComponent(typeof(Image))]
-    public class JigsawPiece : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler
+    public class JigsawPiece : MonoBehaviour, IPointerDownHandler, IPointerUpHandler, IInitializePotentialDragHandler,
+        IBeginDragHandler, IDragHandler, IEndDragHandler
     {
         [Tooltip("Position du centre de la pièce quand elle est bien placée, par rapport au centre du cadre.")]
         public Vector2 targetInBoard;
@@ -46,7 +50,8 @@ namespace EscapeGame
             }
         }
 
-        public void OnBeginDrag(PointerEventData eventData)
+        // Prise au moment de l'appui : la pièce ne saute pas, même si le rayon a déjà bougé quand le glissement commence.
+        public void OnPointerDown(PointerEventData eventData)
         {
             if (m_Puzzle == null || IsPlaced || m_Puzzle.IsSolved || !TryGetPointer(eventData, out var pointer))
                 return;
@@ -55,13 +60,27 @@ namespace EscapeGame
             transform.SetAsLastSibling(); // passe au-dessus des autres pièces
         }
 
+        // Pas de distance minimale avant de commencer à glisser : la pièce suit tout de suite.
+        public void OnInitializePotentialDrag(PointerEventData eventData) => eventData.useDragThreshold = false;
+
+        public void OnBeginDrag(PointerEventData eventData)
+        {
+            if (!m_Dragging)
+                OnPointerDown(eventData);
+        }
+
         public void OnDrag(PointerEventData eventData)
         {
             if (m_Dragging && TryGetPointer(eventData, out var pointer))
                 m_Rect.localPosition = ClampToParent(pointer + m_GrabOffset);
         }
 
-        public void OnEndDrag(PointerEventData eventData)
+        public void OnEndDrag(PointerEventData eventData) => Release();
+
+        // Relâché sans avoir bougé (simple clic) : la prise s'arrête aussi.
+        public void OnPointerUp(PointerEventData eventData) => Release();
+
+        void Release()
         {
             if (!m_Dragging)
                 return;
@@ -109,14 +128,40 @@ namespace EscapeGame
             m_Image.color = color;
         }
 
-        // Point visé par le rayon (ou la souris), dans l'espace du parent de la pièce.
+        // Point où le rayon (ou la souris) traverse le plan de l'écran, dans l'espace du parent de la pièce.
+        // Ne dépend pas de ce que touche le rayon : un geste rapide ne fait pas "décrocher" la pièce.
         bool TryGetPointer(PointerEventData eventData, out Vector3 local)
         {
             local = default;
-            var hit = eventData.pointerCurrentRaycast;
-            if (hit.gameObject == null)
+            var parent = m_Rect.parent;
+            var plane = new Plane(parent.forward, parent.position);
+            Vector3? world = null;
+
+            if (eventData is TrackedDeviceEventData tracked && tracked.rayPoints != null && tracked.rayPoints.Count >= 2)
+            {
+                // Rayon de la manette : suite de segments (droit ou courbe).
+                var points = tracked.rayPoints;
+                for (var i = 0; i < points.Count - 1 && world == null; i++)
+                {
+                    var segment = points[i + 1] - points[i];
+                    var ray = new Ray(points[i], segment);
+                    if (plane.Raycast(ray, out var distance) && distance <= segment.magnitude)
+                        world = ray.GetPoint(distance);
+                }
+            }
+            else
+            {
+                var cam = eventData.pressEventCamera != null ? eventData.pressEventCamera : Camera.main;
+                if (cam != null && plane.Raycast(cam.ScreenPointToRay(eventData.position), out var distance))
+                    world = cam.ScreenPointToRay(eventData.position).GetPoint(distance);
+            }
+
+            if (world == null && eventData.pointerCurrentRaycast.gameObject != null)
+                world = eventData.pointerCurrentRaycast.worldPosition;
+            if (world == null)
                 return false;
-            local = m_Rect.parent.InverseTransformPoint(hit.worldPosition);
+
+            local = parent.InverseTransformPoint(world.Value);
             local.z = 0f;
             return true;
         }

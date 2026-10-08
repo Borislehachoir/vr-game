@@ -11,7 +11,7 @@ namespace EscapeGame
     public class DialCodePuzzle : Puzzle
     {
         [Header("Code")]
-        public string solution = "679";
+        public string solution = "976";
 
         [Header("Affichage")]
         [Tooltip("Un texte par chiffre, de gauche à droite.")]

@@ -28,7 +28,7 @@ namespace EscapeGame.Editor
         const float k_FrameThickness = 10f;
 
         /// <summary>Place de chaque pièce lue dans le CSV de la solution (en pixels de l'image solution).</summary>
-        class SolutionLayout
+        internal class SolutionLayout
         {
             public Vector2 imageSize;
             public readonly Dictionary<string, Rect> pieces = new Dictionary<string, Rect>();
@@ -94,7 +94,7 @@ namespace EscapeGame.Editor
                     string.Join(", ", missing), "OK");
         }
 
-        static SolutionLayout LoadSolutionLayout()
+        internal static SolutionLayout LoadSolutionLayout()
         {
             var csv = AssetDatabase.LoadAssetAtPath<TextAsset>(k_SolutionLayoutPath);
             if (csv == null)
@@ -121,7 +121,7 @@ namespace EscapeGame.Editor
         /// Donne à chaque pièce la taille et la place qu'elle a dans l'image solution
         /// (les PNG n'ont pas tous été exportés à la même échelle). Renvoie les pièces absentes du CSV.
         /// </summary>
-        static List<string> ApplySolutionLayout(JigsawPuzzle puzzle, SolutionLayout layout)
+        internal static List<string> ApplySolutionLayout(JigsawPuzzle puzzle, SolutionLayout layout)
         {
             var missing = new List<string>();
             foreach (var piece in puzzle.pieces)
@@ -163,7 +163,7 @@ namespace EscapeGame.Editor
             return AssetDatabase.LoadAssetAtPath<Sprite>(path);
         }
 
-        static List<Sprite> LoadPieceSprites()
+        internal static List<Sprite> LoadPieceSprites()
         {
             var sprites = new List<Sprite>();
             if (!AssetDatabase.IsValidFolder(k_PiecesFolder))
@@ -212,7 +212,7 @@ namespace EscapeGame.Editor
             importer.SaveAndReimport();
         }
 
-        static JigsawPiece CreatePiece(Transform parent, Sprite sprite)
+        internal static JigsawPiece CreatePiece(Transform parent, Sprite sprite)
         {
             var go = new GameObject("Pièce " + sprite.name, typeof(RectTransform), typeof(Image), typeof(JigsawPiece));
             go.layer = parent.gameObject.layer;
@@ -308,6 +308,48 @@ namespace EscapeGame.Editor
                     if (GUILayout.Button("Replacer les pièces sur la solution (pour vérifier / corriger)"))
                         ShowSolution(puzzle);
             }
+
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Pièces", EditorStyles.boldLabel);
+            using (new EditorGUI.DisabledScope(Application.isPlaying))
+                if (GUILayout.Button("Remplacer par les pièces du dossier « Puzzle ajuste »"))
+                    ReplacePieces(puzzle);
+        }
+
+        // Supprime les pièces de l'écran et les recrée depuis le dossier (taille, place de réussite, rangement),
+        // sans toucher au reste de l'écran (position, prérequis, événements...).
+        static void ReplacePieces(JigsawPuzzle puzzle)
+        {
+            var sprites = JigsawPuzzleMenu.LoadPieceSprites();
+            if (sprites.Count == 0)
+                return;
+
+            var layer = puzzle.pieces.FirstOrDefault(p => p != null)?.transform.parent;
+            if (layer == null)
+                layer = puzzle.transform.Find("Pièces");
+            if (layer == null)
+            {
+                EditorUtility.DisplayDialog("Puzzle", "Calque « Pièces » introuvable : recrée l'écran avec le menu.", "OK");
+                return;
+            }
+
+            Undo.SetCurrentGroupName("Remplacer les pièces du puzzle");
+            var group = Undo.GetCurrentGroup();
+            foreach (var old in layer.GetComponentsInChildren<JigsawPiece>(true))
+                Undo.DestroyObjectImmediate(old.gameObject);
+
+            Undo.RecordObject(puzzle, "Remplacer les pièces du puzzle");
+            puzzle.pieces = sprites.Select(sprite => JigsawPuzzleMenu.CreatePiece(layer, sprite)).ToArray();
+            foreach (var piece in puzzle.pieces)
+                Undo.RegisterCreatedObjectUndo(piece.gameObject, "Remplacer les pièces du puzzle");
+            var layout = JigsawPuzzleMenu.LoadSolutionLayout();
+            var missing = layout != null ? JigsawPuzzleMenu.ApplySolutionLayout(puzzle, layout) : new List<string>();
+            ArrangeInTray(puzzle);
+            EditorUtility.SetDirty(puzzle);
+            Undo.CollapseUndoOperations(group);
+
+            EditorUtility.DisplayDialog("Puzzle", $"{puzzle.pieces.Length} pièces mises en place." +
+                (missing.Count > 0 ? "\nSans place de réussite : " + string.Join(", ", missing) : "") + "\nPense à faire Ctrl+S.", "OK");
         }
 
         static void SaveSolution(JigsawPuzzle puzzle)
