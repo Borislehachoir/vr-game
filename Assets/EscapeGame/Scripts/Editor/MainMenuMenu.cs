@@ -28,6 +28,8 @@ namespace EscapeGame.Editor
         const string k_FontPath = "Assets/Fonts/Emblema_One/EmblemaOne-Regular.ttf";
         const string k_FontAssetPath = "Assets/Fonts/Emblema_One/EmblemaOne-Regular SDF.asset";
         const string k_LogoPath = "Assets/EscapeGame/Menu/Logo Alone At Night.png";
+        const string k_StartVoicePath = "Assets/Vocal/audio-debut.mp3";
+        const string k_GameSceneName = "SampleScene";
 
         // Écran 16:9 en unités UI ; au lancement, MainMenu l'ajuste à la taille réelle de la dalle.
         static readonly Vector2 k_ScreenSize = new Vector2(1600f, 900f);
@@ -83,19 +85,22 @@ namespace EscapeGame.Editor
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
-            PutMenuSceneFirstInBuild();
+            var gameInBuild = PutMenuSceneFirstInBuild();
+            var hasVoice = AssetDatabase.LoadAssetAtPath<AudioClip>(k_StartVoicePath) != null;
             Selection.activeGameObject = instance;
 
             EditorUtility.DisplayDialog("Menu principal",
                 "Menu ajouté à la scène Menu, scène enregistrée.\n\n" +
                 "Au lancement :\n" +
                 "1. le joueur apparaît assis sur le canapé, face à la télé (il ne peut que tourner la tête)\n" +
-                "2. la télé grésille, puis affiche le logo et le bouton Jouer\n" +
-                "3. « Jouer » : la télé s'éteint, le joueur se lève devant le canapé et peut se déplacer\n\n" +
+                "2. la télé grésille, puis affiche le logo et les boutons Jouer / Commandes / Quitter\n" +
+                $"3. « Jouer » : la télé s'éteint, fondu au noir, la scène {k_GameSceneName} se charge et la voix de début se lance\n\n" +
                 $"• Télé : {(hasTv ? "trouvée" : "⚠ INTROUVABLE (objet « TV »)")}\n" +
                 $"• Canapé : {(hasSofa ? "trouvé" : "⚠ INTROUVABLE (objet « sofa »)")}\n" +
                 $"• Joueur (XR Origin) : {(hasPlayer ? "trouvé" : "⚠ INTROUVABLE")}\n" +
                 "• Scène Menu placée en premier dans la liste des scènes du build\n" +
+                (gameInBuild ? "" : $"• {k_GameSceneName} ajoutée à la liste des scènes du build\n") +
+                $"• Voix de début : {(hasVoice ? "trouvée" : $"⚠ INTROUVABLE ({k_StartVoicePath})")}\n" +
                 (eyesCreated
                     ? $"• Objet « {k_EyesName} » créé sur le canapé : déplacez-le pour régler la caméra (flèche bleue = regard)\n\n"
                     : $"• Objet « {k_EyesName} » existant conservé\n\n") +
@@ -134,11 +139,20 @@ namespace EscapeGame.Editor
         }
 
         // Scène Menu en premier : c'est elle qui se lance au démarrage du jeu.
-        static void PutMenuSceneFirstInBuild()
+        // Renvoie true si la scène du jeu était déjà dans la liste (sinon elle est ajoutée après le menu).
+        static bool PutMenuSceneFirstInBuild()
         {
             var scenes = EditorBuildSettings.scenes.Where(s => s.path != k_MenuScenePath).ToList();
             scenes.Insert(0, new EditorBuildSettingsScene(k_MenuScenePath, true));
+            var gamePath = $"Assets/Scenes/{k_GameSceneName}.unity";
+            var game = scenes.FindIndex(s => s.path == gamePath);
+            var wasThere = game >= 0 && scenes[game].enabled;
+            if (game >= 0)
+                scenes[game].enabled = true;
+            else
+                scenes.Insert(1, new EditorBuildSettingsScene(gamePath, true));
             EditorBuildSettings.scenes = scenes.ToArray();
+            return wasThere;
         }
 
         // ---------- Prefab ----------
@@ -155,6 +169,8 @@ namespace EscapeGame.Editor
             try
             {
                 var menu = root.AddComponent<MainMenu>();
+                menu.gameScene = k_GameSceneName;
+                menu.startVoice = AssetDatabase.LoadAssetAtPath<AudioClip>(k_StartVoicePath);
 
                 var canvasGo = new GameObject("Écran télé", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler),
                     typeof(TrackedDeviceGraphicRaycaster));

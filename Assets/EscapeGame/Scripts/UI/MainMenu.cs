@@ -3,6 +3,7 @@ using System.Linq;
 using Unity.XR.CoreUtils;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using UnityEngine.XR.Interaction.Toolkit.Locomotion;
 using UnityEngine.XR.Interaction.Toolkit.UI;
@@ -12,10 +13,9 @@ namespace EscapeGame
     /// <summary>
     /// Menu de début de partie, joué dans la pièce du jeu :
     /// le joueur apparaît assis sur le canapé face à la télé et ne peut que tourner la tête ;
-    /// la télé grésille, puis affiche le logo et les boutons Jouer / Commandes / Quitter. Après "Jouer", la télé s'éteint,
-    /// le joueur se lève devant le canapé et peut se déplacer.
-    /// La télé, le canapé et le joueur sont trouvés automatiquement : le prefab "Menu principal"
-    /// fonctionne dans n'importe quelle scène qui les contient.
+    /// la télé grésille, puis affiche le logo et les boutons Jouer / Commandes / Quitter.
+    /// "Jouer" éteint la télé, fait un fondu au noir, charge la scène du jeu et y lance la voix de début.
+    /// La télé, le canapé et le joueur sont trouvés automatiquement.
     /// </summary>
     public class MainMenu : MonoBehaviour
     {
@@ -39,18 +39,23 @@ namespace EscapeGame
         [Tooltip("Objet « Yeux du joueur » : la caméra se place exactement dessus et regarde le long de sa flèche bleue. " +
                  "Vide : position calculée à partir du canapé.")]
         public Transform seatEyes;
-        [Tooltip("Où le joueur se lève après « Jouer ». Vide : devant le canapé, côté télé.")]
-        public Transform standPoint;
 
         [Header("Réglages")]
         [Tooltip("Hauteur des yeux d'une personne assise (m).")]
         public float seatEyeHeight = 1.15f;
         [Tooltip("Décalage de l'assise vers l'avant du canapé (m).")]
         public float seatForward = 0.1f;
-        [Tooltip("Distance devant le canapé où le joueur se lève (m).")]
-        public float standDistance = 0.5f;
         [Tooltip("Si la tête s'éloigne plus que ça (m) de la place assise, le joueur y est rassis.")]
         public float maxHeadDrift = 0.35f;
+
+        [Header("Jeu")]
+        [Tooltip("Scène chargée par « Jouer » (doit être dans la liste des scènes du build).")]
+        public string gameScene = "SampleScene";
+        [Tooltip("Voix jouée quand la scène du jeu a fini de charger.")]
+        public AudioClip startVoice;
+        [Range(0f, 1f)] public float startVoiceVolume = 1f;
+        [Tooltip("Attente (s) entre l'arrivée dans la scène du jeu et la voix.")]
+        public float startVoiceDelay = 0.5f;
 
         [Header("Séquence")]
         [Tooltip("Télé éteinte au début (s).")]
@@ -68,7 +73,7 @@ namespace EscapeGame
         static readonly string[] k_TvNames = { "TV", "Télé", "Television" };
         static readonly string[] k_SofaNames = { "sofa", "Canapé", "Canape", "Couch" };
 
-        Vector3 m_SeatEyes, m_StandPoint, m_LookAt;
+        Vector3 m_SeatEyes, m_LookAt;
         bool m_Locked;
         bool m_Seated;
         TvScreen m_TvScreen;
@@ -213,10 +218,46 @@ namespace EscapeGame
                 m_TvScreen.TurnOff();
 
             yield return FadeBlack(1f, 0.35f);
-            StandUp();
-            LockPlayer(false);
-            yield return FadeBlack(0f, 0.35f);
+
+            // Le menu survit au changement de scène, le temps du fondu d'arrivée et de la voix de début.
+            m_Locked = false;
             screen.gameObject.SetActive(false);
+            if (m_Black != null)
+                Destroy(m_Black.gameObject); // lié à la caméra de la scène Menu, qui va disparaître
+            m_Black = null;
+            DontDestroyOnLoad(gameObject);
+
+            var loading = SceneManager.LoadSceneAsync(gameScene);
+            if (loading == null)
+            {
+                Debug.LogError($"Menu principal : scène « {gameScene} » introuvable. L'ajouter à la liste des scènes du build.", this);
+                Destroy(gameObject);
+                yield break;
+            }
+            while (!loading.isDone)
+                yield return null;
+
+            // Arrivée dans le jeu : fondu depuis le noir, puis la voix.
+            origin = FindAnyObjectByType<XROrigin>();
+            m_Black = CreateBlackOverlay();
+            if (m_Black != null)
+            {
+                m_Black.color = Color.black;
+                m_Black.enabled = true;
+            }
+            yield return FadeBlack(0f, 0.6f);
+
+            if (startVoice != null)
+            {
+                yield return new WaitForSeconds(startVoiceDelay);
+                var voice = gameObject.AddComponent<AudioSource>();
+                voice.clip = startVoice;
+                voice.volume = startVoiceVolume;
+                voice.spatialBlend = 0f; // voix "dans la tête" du joueur
+                voice.Play();
+                yield return new WaitForSeconds(startVoice.length);
+            }
+            Destroy(gameObject);
         }
 
         // ---------- Pièce ----------
@@ -302,15 +343,13 @@ namespace EscapeGame
         {
             if (seatEyes != null)
                 m_SeatEyes = seatEyes.position;
-            if (standPoint != null)
-                m_StandPoint = standPoint.position;
-            if (seatEyes != null && standPoint != null)
+            if (seatEyes != null)
                 return;
 
             var renderers = sofa != null ? sofa.GetComponentsInChildren<Renderer>() : new Renderer[0];
             if (renderers.Length == 0)
             {
-                Debug.LogWarning("Menu principal : canapé introuvable (objet « sofa »). Renseigner Seat Eyes et Stand Point.", this);
+                Debug.LogWarning("Menu principal : canapé introuvable (objet « sofa »). Renseigner Seat Eyes.", this);
                 return;
             }
             var bounds = renderers[0].bounds;
@@ -320,13 +359,9 @@ namespace EscapeGame
             var toTv = m_LookAt - bounds.center;
             toTv.y = 0f;
             toTv.Normalize();
-            var halfDepth = Mathf.Abs(toTv.x) * bounds.extents.x + Mathf.Abs(toTv.z) * bounds.extents.z;
             var seat = new Vector3(bounds.center.x, bounds.min.y, bounds.center.z) + toTv * seatForward;
 
-            if (seatEyes == null)
-                m_SeatEyes = seat + Vector3.up * seatEyeHeight;
-            if (standPoint == null)
-                m_StandPoint = seat + toTv * (halfDepth + standDistance);
+            m_SeatEyes = seat + Vector3.up * seatEyeHeight;
         }
 
         // ---------- Joueur ----------
@@ -342,19 +377,6 @@ namespace EscapeGame
                 origin.MatchOriginUpCameraForward(Vector3.up, forward.normalized);
             // La caméra est posée exactement sur le point, quelle que soit la taille ou la posture réelle du joueur.
             origin.MoveCameraToWorldLocation(m_SeatEyes);
-            Physics.SyncTransforms();
-        }
-
-        void StandUp()
-        {
-            if (origin == null)
-                return;
-            var originTransform = origin.transform;
-            var delta = m_StandPoint - origin.Camera.transform.position;
-            delta.y = 0f;
-            var position = originTransform.position + delta;
-            position.y = m_StandPoint.y; // pieds au sol
-            originTransform.position = position;
             Physics.SyncTransforms();
         }
 
