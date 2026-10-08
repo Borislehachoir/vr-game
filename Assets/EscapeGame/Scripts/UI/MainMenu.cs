@@ -39,6 +39,9 @@ namespace EscapeGame
         [Tooltip("Objet « Yeux du joueur » : la caméra se place exactement dessus et regarde le long de sa flèche bleue. " +
                  "Vide : position calculée à partir du canapé.")]
         public Transform seatEyes;
+        [Tooltip("Coché : l'écran du menu est recalé automatiquement sur la dalle de la télé au lancement. " +
+                 "Décoché : le menu reste exactement où il est posé dans la scène.")]
+        public bool autoPlaceOnTv;
 
         [Header("Réglages")]
         [Tooltip("Hauteur des yeux d'une personne assise (m).")]
@@ -284,6 +287,13 @@ namespace EscapeGame
         {
             Vector3 center, front, up;
             Vector2 size;
+
+            // Menu posé à la main dans la scène : on le laisse où il est.
+            if (!autoPlaceOnTv)
+            {
+                m_LookAt = screen.position;
+                return true;
+            }
 
             if (m_TvScreen != null && m_TvScreen.screen != null)
             {

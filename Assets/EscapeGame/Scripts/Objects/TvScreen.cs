@@ -28,6 +28,8 @@ namespace EscapeGame
         [Tooltip("Résolution de l'image vidéo (largeur), la hauteur suit le format de la vidéo.")]
         public int videoWidth = 1280;
         public bool startOn;
+        [Tooltip("Lueur de l'écran : jamais allumée par la télé (seulement par le menu principal), éteinte avec elle.")]
+        public Light glow;
 
         [Header("Son")]
         [Range(0f, 1f)] public float volume = 1f;
@@ -102,6 +104,9 @@ namespace EscapeGame
                 if (screen != null)
                     screen.sharedMaterial = IsOn ? onMaterial : offMaterial;
             }
+
+            if (!IsOn && glow != null)
+                glow.enabled = false;
 
             if (notify && wasOn != IsOn)
                 (IsOn ? onTurnedOn : onTurnedOff).Invoke();

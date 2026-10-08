@@ -1,0 +1,18 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 974a65a9644a45ab8376f0ec575b40c6, type: 3}
+  m_Name: Menu pause
+  m_EditorClassIdentifier: 
+  menuPrefab: {fileID: 7965115931939902477, guid: c1ba11f8f00be1f499dadb7aa6c7c929, type: 3}
+  resumeLabel: REPRENDRE
+  subtitle: PAUSE
+  extraControls: "\n\n<color=#D6A05C>Bouton menu</color> (manette gauche)\npause"

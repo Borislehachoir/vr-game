@@ -3049,6 +3049,10 @@ MonoBehaviour:
   staticDuration: 2.5
   menuFadeDuration: 0.8
   staticVolume: 0.25
+  gameScene: SampleScene
+  startVoice: {fileID: 8300000, guid: bfd526f2b46c81744bf32c3711c92b9f, type: 3}
+  startVoiceVolume: 1
+  startVoiceDelay: 0.5
 --- !u!1 &8347936785118827911
 GameObject:
   m_ObjectHideFlags: 0

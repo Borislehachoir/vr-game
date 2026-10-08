@@ -22,6 +22,8 @@ namespace EscapeGame
         public bool oneDigitAtATime = true;
         [Tooltip("Les chiffres du code sont acceptés dans n'importe quel ordre (ex. 976, 679, 769...).")]
         public bool anyOrder = true;
+        [Tooltip("Énigme finale : le bon code arrête le chrono et affiche l'écran de fin.")]
+        public bool endsGame = true;
 
         [Header("Affichage")]
         [Tooltip("Un texte par chiffre, de gauche à droite. En mode un chiffre à la fois, seul le premier est utilisé.")]
