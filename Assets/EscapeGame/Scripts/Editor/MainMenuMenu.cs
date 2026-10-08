@@ -287,15 +287,20 @@ namespace EscapeGame.Editor
 
         static Sprite GetSprite(string path)
         {
+            // Le mode "Single" est indispensable : sans lui, l'image n'a pas de Sprite et le logo n'apparaît pas.
             if (AssetImporter.GetAtPath(path) is TextureImporter importer &&
-                importer.textureType != TextureImporterType.Sprite)
+                (importer.textureType != TextureImporterType.Sprite || importer.spriteImportMode != SpriteImportMode.Single))
             {
                 importer.textureType = TextureImporterType.Sprite;
+                importer.spriteImportMode = SpriteImportMode.Single;
                 importer.alphaIsTransparency = true;
                 importer.mipmapEnabled = true; // vu de loin dans le casque : évite le scintillement
                 importer.SaveAndReimport();
             }
-            return AssetDatabase.LoadAssetAtPath<Sprite>(path);
+            var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(path);
+            if (sprite == null)
+                Debug.LogWarning($"Menu principal : image introuvable ou illisible : {path}");
+            return sprite;
         }
     }
 }
