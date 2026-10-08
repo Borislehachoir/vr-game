@@ -6,6 +6,8 @@ using UnityEditor.Events;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.Events;
+using UnityEngine.EventSystems;
+using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 using UnityEngine.TextCore.LowLevel;
 using UnityEngine.UI;
@@ -14,11 +16,16 @@ using UnityEngine.XR.Interaction.Toolkit.UI;
 namespace EscapeGame.Editor
 {
     /// <summary>
-    /// Menu "Escape Game > Menu > Créer le menu sur la télé" : construit le menu principal sur l'écran de la télé
-    /// et assoit le joueur sur le canapé, face à elle. Relancer le menu remplace le menu existant.
+    /// Menu "Escape Game > Menu > Créer ou mettre à jour la scène Menu" : crée la scène Assets/Scenes/Menu.unity
+    /// (la pièce, le canapé et la télé du jeu), construit le menu principal sur l'écran de la télé
+    /// et assoit le joueur sur le canapé. Ne modifie aucune autre scène.
+    /// Relancer le menu reconstruit l'écran ; le décor déjà en place dans la scène Menu est conservé.
     /// </summary>
     static class MainMenuMenu
     {
+        const string k_MenuScenePath = "Assets/Scenes/Menu.unity";
+        const string k_GameSceneName = "SampleScene";
+
         const string k_RootName = "Menu principal";
         static readonly string[] k_TvNames = { "TV", "Télé", "Tele", "Television", "Télévision" };
         static readonly string[] k_SofaNames = { "sofa", "Canapé", "Canape", "Couch" };
@@ -26,6 +33,14 @@ namespace EscapeGame.Editor
         const string k_FontPath = "Assets/Fonts/Emblema_One/EmblemaOne-Regular.ttf";
         const string k_FontAssetPath = "Assets/Fonts/Emblema_One/EmblemaOne-Regular SDF.asset";
         const string k_BackgroundPath = "Assets/EscapeGame/Menu/Fond menu.jpg";
+
+        // Décor recopié de la scène du jeu (mêmes modèles, mêmes positions) pour retrouver la même pièce.
+        const string k_RoomPath = "Assets/Models/SousSol/SousSol.fbx";
+        const string k_SofaPath = "Assets/3D/Canap/source/sofa.fbx";
+        const string k_TvPath = "Assets/3D/Télé/source/Modern_TV/TV.fbx";
+        const string k_TablePath = "Assets/3D/Table Basse/source/SM_table.fbx";
+        const string k_XROriginPath = "Assets/VRTemplateAssets/Prefabs/Setup/Complete XR Origin Set Up Hands Variant.prefab";
+        const string k_HandsPermissionsPath = "Assets/VRTemplateAssets/Prefabs/Setup/Hands Permissions Manager.prefab";
 
         // Écran 16:9 en unités UI ; l'échelle du Canvas l'ajuste à la taille réelle de la télé.
         static readonly Vector2 k_ScreenSize = new Vector2(1600f, 900f);
@@ -35,7 +50,6 @@ namespace EscapeGame.Editor
         // Joueur.
         const float k_SeatEyeHeight = 1.15f;  // hauteur des yeux d'une personne assise (m)
         const float k_SeatForward = 0.1f;     // décalage de l'assise vers l'avant du canapé (m)
-        const float k_StandDistance = 0.5f;   // distance devant le canapé où le joueur se lève (m)
 
         // Couleurs de la page itch.io.
         static readonly Color k_Cream = new Color32(236, 226, 208, 255);
@@ -44,41 +58,51 @@ namespace EscapeGame.Editor
         static readonly Color k_Dim = new Color32(138, 133, 124, 255);
         const float k_Margin = 110f;
 
-        [MenuItem("Escape Game/Menu/Créer le menu sur la télé (scène ouverte)")]
-        static void CreateMenu()
+        [MenuItem("Escape Game/Menu/Créer ou mettre à jour la scène Menu")]
+        static void CreateMenuScene()
         {
-            var scene = SceneManager.GetActiveScene();
+            // Les modifications en cours sur la scène ouverte restent à l'utilisateur : Unity lui demande quoi en faire.
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+                return;
+
+            var isNew = AssetDatabase.LoadAssetAtPath<SceneAsset>(k_MenuScenePath) == null;
+            var scene = isNew
+                ? EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single)
+                : EditorSceneManager.OpenScene(k_MenuScenePath, OpenSceneMode.Single);
+            if (isNew)
+                BuildEnvironment(scene);
+
             var tv = FindByName(scene, k_TvNames);
             var sofa = FindByName(scene, k_SofaNames);
-            var origin = Object.FindFirstObjectByType<XROrigin>();
+            var origin = scene.GetRootGameObjects().Select(g => g.GetComponentInChildren<XROrigin>(true)).FirstOrDefault(o => o != null);
 
             var missing = (tv == null ? "• la télé (objet nommé « TV »)\n" : "") +
                           (sofa == null ? "• le canapé (objet nommé « sofa »)\n" : "") +
                           (origin == null ? "• le joueur (XR Origin)\n" : "");
             if (missing.Length > 0)
             {
-                EditorUtility.DisplayDialog("Menu principal", "Introuvable dans la scène :\n" + missing, "OK");
+                EditorUtility.DisplayDialog("Scène Menu", "Introuvable dans la scène Menu :\n" + missing, "OK");
                 return;
             }
 
             if (!TryGetScreen(tv, sofa, out var screenCenter, out var screenNormal, out var screenSize))
             {
-                EditorUtility.DisplayDialog("Menu principal", "La télé n'a pas de modèle 3D (MeshFilter).", "OK");
+                EditorUtility.DisplayDialog("Scène Menu", "La télé n'a pas de modèle 3D (MeshFilter).", "OK");
                 return;
             }
 
             var font = GetOrCreateFontAsset();
             var background = GetBackgroundSprite();
-            PuzzleScreenMenu.EnsureXREventSystem();
+            EnsureXREventSystem(scene);
 
             var old = scene.GetRootGameObjects().FirstOrDefault(g => g.name == k_RootName);
             if (old != null)
-                Undo.DestroyObjectImmediate(old);
+                Object.DestroyImmediate(old);
 
             var root = new GameObject(k_RootName);
             SceneManager.MoveGameObjectToScene(root, scene);
-            Undo.RegisterCreatedObjectUndo(root, "Créer le menu principal");
             var menu = root.AddComponent<MainMenu>();
+            menu.gameScene = k_GameSceneName;
 
             // --- Écran ---
             var canvas = CreateCanvas(root.transform, screenCenter + screenNormal * k_ScreenGap, screenNormal, screenSize);
@@ -86,35 +110,126 @@ namespace EscapeGame.Editor
             menu.lookTarget = canvas.transform;
             BuildScreen(canvas.transform, menu, font, background);
 
-            // --- Joueur assis / debout ---
+            // --- Joueur assis ---
             var sofaBounds = GetBounds(sofa);
             var floor = sofaBounds.min.y;
             var toTv = screenCenter - sofaBounds.center;
             toTv.y = 0f;
             toTv.Normalize();
-            var halfDepth = Mathf.Abs(toTv.x) * sofaBounds.extents.x + Mathf.Abs(toTv.z) * sofaBounds.extents.z;
             var seat = new Vector3(sofaBounds.center.x, floor, sofaBounds.center.z) + toTv * k_SeatForward;
 
             menu.seatEyes = CreatePoint(root.transform, "Assise (yeux)", seat + Vector3.up * k_SeatEyeHeight, toTv);
-            menu.standPoint = CreatePoint(root.transform, "Point de départ (debout)", seat + toTv * (halfDepth + k_StandDistance), toTv);
             menu.origin = origin;
-
             // Le joueur démarre sur le canapé, face à la télé (aussi dans l'éditeur).
-            Undo.RecordObject(origin.transform, "Placer le joueur sur le canapé");
             origin.transform.SetPositionAndRotation(seat, Quaternion.LookRotation(toTv, Vector3.up));
 
             EditorSceneManager.MarkSceneDirty(scene);
+            EditorSceneManager.SaveScene(scene, k_MenuScenePath);
+            var buildReport = AddScenesToBuild();
+
             Selection.activeGameObject = root;
             SceneView.lastActiveSceneView?.FrameSelected();
 
-            EditorUtility.DisplayDialog("Menu principal",
-                "Menu créé sur l'écran de la télé :\n" +
-                "• Jouer / Commandes / Quitter, au style de la page itch.io\n" +
-                "• Le joueur démarre assis sur le canapé, face à la télé\n" +
-                "• Déplacements et rotations bloqués jusqu'à « Jouer »\n\n" +
+            EditorUtility.DisplayDialog("Scène Menu",
+                (isNew ? "Scène créée et enregistrée : " : "Scène mise à jour et enregistrée : ") + k_MenuScenePath + "\n\n" +
+                "• Menu Jouer / Commandes / Quitter sur l'écran de la télé, au style de la page itch.io\n" +
+                "• Le joueur démarre assis sur le canapé, face à la télé, sans pouvoir se déplacer\n" +
+                $"• « Jouer » charge la scène {k_GameSceneName}\n" +
+                buildReport + "\n" +
                 "Si l'écran déborde du cadre ou ne colle pas à la dalle : sélectionner « Menu principal > Écran télé » " +
-                "et ajuster sa position / son échelle. Même chose pour « Assise (yeux) » et « Point de départ (debout) ».\n\n" +
-                "Penser à enregistrer la scène (Ctrl+S).", "OK");
+                "et ajuster sa position / son échelle (même chose pour « Assise (yeux) »), puis Ctrl+S.\n\n" +
+                "Aucune autre scène n'a été modifiée.", "OK");
+        }
+
+        // ---------- Décor de la scène Menu ----------
+
+        static void BuildEnvironment(Scene scene)
+        {
+            Spawn(scene, k_RoomPath, "SousSol", new Vector3(-1.7787f, 5.14f, -0.23428f), Quaternion.identity, null);
+            Spawn(scene, k_SofaPath, "sofa", new Vector3(8.6001f, 0.6841f, 10.8891f),
+                new Quaternion(-0.44708574f, -0.54315734f, -0.5359183f, -0.4667827f), new Vector3(21.301538f, 44.631203f, 8.415323f));
+            var tvRotation = new Quaternion(-0.7071068f, 0f, 0f, 0.7071067f);
+            Spawn(scene, k_TvPath, "TV", new Vector3(11.6174f, 0.373f, 11.258f), tvRotation, Vector3.one * 123.28f);
+            Spawn(scene, k_TablePath, "SM_table", new Vector3(11.593f, 0f, 11.2516f), tvRotation, new Vector3(28.131765f, 53.152157f, 28.131765f));
+            Spawn(scene, k_XROriginPath, "XR Origin Hands (XR Rig)", Vector3.zero, Quaternion.identity, Vector3.one * 0.9f);
+            Spawn(scene, k_HandsPermissionsPath, "Hands Permissions Manager", Vector3.zero, Quaternion.identity, null);
+
+            // Pièce plongée dans le noir : seulement une lampe chaude au plafond et la lueur de la télé.
+            RenderSettings.skybox = null;
+            RenderSettings.ambientMode = AmbientMode.Flat;
+            RenderSettings.ambientLight = new Color(0.04f, 0.045f, 0.06f);
+
+            var tv = FindByName(scene, k_TvNames);
+            var sofa = FindByName(scene, k_SofaNames);
+            if (tv == null || sofa == null)
+                return;
+            var tvBounds = GetBounds(tv);
+            var sofaBounds = GetBounds(sofa);
+            var between = (tvBounds.center + sofaBounds.center) / 2f;
+            CreateLight(scene, "Lampe", new Vector3(between.x, sofaBounds.min.y + 2.3f, between.z),
+                new Color(1f, 0.78f, 0.55f), 1.2f, 6f);
+            var towardSofa = sofaBounds.center - tvBounds.center;
+            towardSofa.y = 0f;
+            CreateLight(scene, "Lueur de la télé", tvBounds.center + towardSofa.normalized * 0.5f,
+                new Color(0.75f, 0.8f, 1f), 0.6f, 3f);
+        }
+
+        static void Spawn(Scene scene, string path, string name, Vector3 position, Quaternion rotation, Vector3? scale)
+        {
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            if (prefab == null)
+            {
+                Debug.LogWarning($"Scène Menu : modèle introuvable, ignoré : {path}");
+                return;
+            }
+            var go = (GameObject)PrefabUtility.InstantiatePrefab(prefab, scene);
+            go.name = name;
+            go.transform.SetPositionAndRotation(position, rotation);
+            if (scale.HasValue)
+                go.transform.localScale = scale.Value;
+        }
+
+        static void CreateLight(Scene scene, string name, Vector3 position, Color color, float intensity, float range)
+        {
+            var go = new GameObject(name);
+            SceneManager.MoveGameObjectToScene(go, scene);
+            go.transform.position = position;
+            var light = go.AddComponent<Light>();
+            light.type = LightType.Point;
+            light.color = color;
+            light.intensity = intensity;
+            light.range = range;
+            light.shadows = LightShadows.None; // Quest : pas d'ombres temps réel
+        }
+
+        // Les rayons / doigts XR ne cliquent sur l'UI que si l'EventSystem utilise XRUIInputModule.
+        static void EnsureXREventSystem(Scene scene)
+        {
+            var eventSystem = scene.GetRootGameObjects().Select(g => g.GetComponentInChildren<EventSystem>(true)).FirstOrDefault(e => e != null);
+            if (eventSystem == null)
+            {
+                var go = new GameObject("EventSystem", typeof(EventSystem), typeof(XRUIInputModule));
+                SceneManager.MoveGameObjectToScene(go, scene);
+                return;
+            }
+            if (eventSystem.GetComponent<XRUIInputModule>() != null)
+                return;
+            foreach (var module in eventSystem.GetComponents<BaseInputModule>())
+                Object.DestroyImmediate(module);
+            eventSystem.gameObject.AddComponent<XRUIInputModule>();
+        }
+
+        // Menu en premier (scène de lancement), la scène du jeu juste après. Les autres scènes de la liste restent.
+        static string AddScenesToBuild()
+        {
+            var scenes = EditorBuildSettings.scenes.Where(s => s.path != k_MenuScenePath).ToList();
+            scenes.Insert(0, new EditorBuildSettingsScene(k_MenuScenePath, true));
+            EditorBuildSettings.scenes = scenes.ToArray();
+
+            var game = scenes.FirstOrDefault(s => System.IO.Path.GetFileNameWithoutExtension(s.path) == k_GameSceneName);
+            return game != null && game.enabled
+                ? $"• Liste des scènes du build : Menu en premier, puis {k_GameSceneName}\n"
+                : $"• Liste des scènes du build : Menu ajouté. ⚠ Ajouter aussi {k_GameSceneName} (File > Build Profiles)\n";
         }
 
         // ---------- Recherche de la télé et de l'écran ----------

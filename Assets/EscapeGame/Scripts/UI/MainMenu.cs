@@ -1,17 +1,17 @@
 using System.Collections;
-using System.Collections.Generic;
 using Unity.XR.CoreUtils;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using UnityEngine.XR.Interaction.Toolkit.Locomotion;
 
 namespace EscapeGame
 {
     /// <summary>
-    /// Menu principal affiché sur l'écran de la télé. Au lancement, le joueur est assis sur le canapé,
+    /// Menu principal (scène Menu) affiché sur l'écran de la télé. Le joueur est assis sur le canapé,
     /// face à la télé : il ne peut que tourner la tête (déplacements et rotations désactivés).
-    /// "Jouer" éteint l'écran, pose le joueur debout devant le canapé et lui rend ses déplacements.
-    /// Créé par le menu "Escape Game > Menu > Créer le menu sur la télé".
+    /// "Jouer" éteint l'écran, fait un fondu au noir et charge la scène du jeu.
+    /// Créé par le menu "Escape Game > Menu > Créer ou mettre à jour la scène Menu".
     /// </summary>
     public class MainMenu : MonoBehaviour
     {
@@ -25,19 +25,19 @@ namespace EscapeGame
         public XROrigin origin;
         [Tooltip("Position des yeux du joueur assis sur le canapé.")]
         public Transform seatEyes;
-        [Tooltip("Où le joueur se retrouve debout après « Jouer » (posé au sol).")]
-        public Transform standPoint;
         [Tooltip("Ce que le joueur regarde en s'asseyant (l'écran de la télé).")]
         public Transform lookTarget;
         [Tooltip("Si la tête s'éloigne plus que ça (m) de la place assise, le joueur y est ramené.")]
         public float maxHeadDrift = 0.35f;
 
+        [Header("Jeu")]
+        [Tooltip("Scène chargée par « Jouer » (doit être dans File > Build Profiles > Scene List).")]
+        public string gameScene = "SampleScene";
+
         [Header("Transitions")]
-        public bool showOnStart = true;
         public float screenFadeDuration = 0.5f;
         public float blackFadeDuration = 0.35f;
 
-        readonly List<Behaviour> m_Disabled = new List<Behaviour>();
         bool m_Open;
         bool m_Placed;
         Image m_Black;
@@ -49,17 +49,10 @@ namespace EscapeGame
             if (origin == null)
                 origin = FindFirstObjectByType<XROrigin>();
 
-            if (!showOnStart)
-            {
-                screen.alpha = 0f;
-                screen.gameObject.SetActive(false);
-                return;
-            }
-
             ShowPage(main: true);
             screen.alpha = 1f;
             m_Open = true;
-            LockPlayer(true);
+            LockPlayer();
             StartCoroutine(SeatWhenTracked());
         }
 
@@ -116,23 +109,7 @@ namespace EscapeGame
             screen.gameObject.SetActive(false);
 
             yield return FadeBlack(1f);
-            StandUp();
-            LockPlayer(false);
-            yield return FadeBlack(0f);
-        }
-
-        void StandUp()
-        {
-            if (origin == null || standPoint == null)
-                return;
-
-            var originTransform = origin.transform;
-            var delta = standPoint.position - origin.Camera.transform.position;
-            delta.y = 0f;
-            var position = originTransform.position + delta;
-            position.y = standPoint.position.y; // de retour au niveau du sol
-            originTransform.position = position;
-            Physics.SyncTransforms();
+            SceneManager.LoadScene(gameScene);
         }
 
         /// <summary>Bouton "Commandes".</summary>
@@ -160,17 +137,8 @@ namespace EscapeGame
         }
 
         // Désactive déplacement, rotation, téléportation et gravité. Les rayons des manettes restent actifs pour viser le menu.
-        void LockPlayer(bool locked)
+        void LockPlayer()
         {
-            if (!locked)
-            {
-                foreach (var behaviour in m_Disabled)
-                    if (behaviour != null)
-                        behaviour.enabled = true;
-                m_Disabled.Clear();
-                return;
-            }
-
             if (origin == null)
                 return;
 
@@ -184,13 +152,7 @@ namespace EscapeGame
                     Disable(behaviour);
         }
 
-        void Disable(Behaviour behaviour)
-        {
-            if (!behaviour.enabled)
-                return;
-            behaviour.enabled = false;
-            m_Disabled.Add(behaviour);
-        }
+        static void Disable(Behaviour behaviour) => behaviour.enabled = false;
 
         static IEnumerator Fade(CanvasGroup group, float target, float duration)
         {
