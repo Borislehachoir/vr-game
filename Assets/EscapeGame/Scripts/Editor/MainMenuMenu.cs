@@ -1,13 +1,8 @@
 using System.Linq;
 using TMPro;
-using Unity.XR.CoreUtils;
 using UnityEditor;
-using UnityEditor.Events;
 using UnityEditor.SceneManagement;
 using UnityEngine;
-using UnityEngine.Events;
-using UnityEngine.EventSystems;
-using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 using UnityEngine.TextCore.LowLevel;
 using UnityEngine.UI;
@@ -16,381 +11,273 @@ using UnityEngine.XR.Interaction.Toolkit.UI;
 namespace EscapeGame.Editor
 {
     /// <summary>
-    /// Menu "Escape Game > Menu > Créer ou mettre à jour la scène Menu" : crée la scène Assets/Scenes/Menu.unity
-    /// (la pièce, le canapé et la télé du jeu), construit le menu principal sur l'écran de la télé
-    /// et assoit le joueur sur le canapé. Ne modifie aucune autre scène.
-    /// Relancer le menu reconstruit l'écran ; le décor déjà en place dans la scène Menu est conservé.
+    /// Menu "Escape Game > Menu > Ajouter le menu à la scène Menu" :
+    /// fabrique le prefab "Menu principal" (écran de télé : neige, logo, bouton Jouer) et le pose dans
+    /// la scène Assets/Scenes/Menu.unity. Aucune autre scène n'est ouverte ni modifiée.
+    /// Au lancement, le prefab trouve lui-même la télé, le canapé et le joueur (voir MainMenu).
+    /// Relancer le menu reconstruit le prefab et remplace celui de la scène Menu.
     /// </summary>
     static class MainMenuMenu
     {
         const string k_MenuScenePath = "Assets/Scenes/Menu.unity";
-        const string k_GameSceneName = "SampleScene";
-
+        const string k_PrefabPath = "Assets/EscapeGame/Menu/Menu principal.prefab";
         const string k_RootName = "Menu principal";
-        static readonly string[] k_TvNames = { "TV", "Télé", "Tele", "Television", "Télévision" };
-        static readonly string[] k_SofaNames = { "sofa", "Canapé", "Canape", "Couch" };
+        const string k_EyesName = "Yeux du joueur";
+        const float k_DefaultEyeHeight = 1.15f; // position de départ du point, à ajuster à la main
 
         const string k_FontPath = "Assets/Fonts/Emblema_One/EmblemaOne-Regular.ttf";
         const string k_FontAssetPath = "Assets/Fonts/Emblema_One/EmblemaOne-Regular SDF.asset";
-        const string k_BackgroundPath = "Assets/EscapeGame/Menu/Fond menu.jpg";
+        const string k_LogoPath = "Assets/EscapeGame/Menu/Logo Alone At Night.png";
+        const string k_StartVoicePath = "Assets/Vocal/audio-debut.mp3";
+        const string k_GameSceneName = "SampleScene";
 
-        // Décor recopié de la scène du jeu (mêmes modèles, mêmes positions) pour retrouver la même pièce.
-        const string k_RoomPath = "Assets/Models/SousSol/SousSol.fbx";
-        const string k_SofaPath = "Assets/3D/Canap/source/sofa.fbx";
-        const string k_TvPath = "Assets/3D/Télé/source/Modern_TV/TV.fbx";
-        const string k_TablePath = "Assets/3D/Table Basse/source/SM_table.fbx";
-        const string k_XROriginPath = "Assets/VRTemplateAssets/Prefabs/Setup/Complete XR Origin Set Up Hands Variant.prefab";
-        const string k_HandsPermissionsPath = "Assets/VRTemplateAssets/Prefabs/Setup/Hands Permissions Manager.prefab";
-
-        // Écran 16:9 en unités UI ; l'échelle du Canvas l'ajuste à la taille réelle de la télé.
+        // Écran 16:9 en unités UI ; au lancement, MainMenu l'ajuste à la taille réelle de la dalle.
         static readonly Vector2 k_ScreenSize = new Vector2(1600f, 900f);
-        const float k_ScreenGap = 0.006f;     // distance (m) devant la dalle, évite que l'écran clignote dans la télé
-        const float k_Bezel = 0.05f;          // part de la largeur / hauteur réservée au cadre de la télé
-
-        // Joueur.
-        const float k_SeatEyeHeight = 1.15f;  // hauteur des yeux d'une personne assise (m)
-        const float k_SeatForward = 0.1f;     // décalage de l'assise vers l'avant du canapé (m)
 
         // Couleurs de la page itch.io.
         static readonly Color k_Cream = new Color32(236, 226, 208, 255);
         static readonly Color k_Amber = new Color32(214, 160, 92, 255);
         static readonly Color k_Muted = new Color32(190, 170, 140, 255);
         static readonly Color k_Dim = new Color32(138, 133, 124, 255);
-        const float k_Margin = 110f;
 
-        [MenuItem("Escape Game/Menu/Créer ou mettre à jour la scène Menu")]
-        static void CreateMenuScene()
+        [MenuItem("Escape Game/Menu/Ajouter le menu à la scène Menu")]
+        static void AddMenuToMenuScene()
         {
+            if (AssetDatabase.LoadAssetAtPath<SceneAsset>(k_MenuScenePath) == null)
+            {
+                EditorUtility.DisplayDialog("Menu principal",
+                    $"Scène introuvable : {k_MenuScenePath}\n\nCréer d'abord la scène Menu (la pièce avec le canapé et la télé).", "OK");
+                return;
+            }
+
             // Les modifications en cours sur la scène ouverte restent à l'utilisateur : Unity lui demande quoi en faire.
             if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
                 return;
 
-            var isNew = AssetDatabase.LoadAssetAtPath<SceneAsset>(k_MenuScenePath) == null;
-            var scene = isNew
-                ? EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single)
-                : EditorSceneManager.OpenScene(k_MenuScenePath, OpenSceneMode.Single);
-            if (isNew)
-                BuildEnvironment(scene);
-
-            var tv = FindByName(scene, k_TvNames);
-            var sofa = FindByName(scene, k_SofaNames);
-            var origin = scene.GetRootGameObjects().Select(g => g.GetComponentInChildren<XROrigin>(true)).FirstOrDefault(o => o != null);
-
-            var missing = (tv == null ? "• la télé (objet nommé « TV »)\n" : "") +
-                          (sofa == null ? "• le canapé (objet nommé « sofa »)\n" : "") +
-                          (origin == null ? "• le joueur (XR Origin)\n" : "");
-            if (missing.Length > 0)
-            {
-                EditorUtility.DisplayDialog("Scène Menu", "Introuvable dans la scène Menu :\n" + missing, "OK");
+            var prefab = BuildPrefab();
+            if (prefab == null)
                 return;
-            }
 
-            if (!TryGetScreen(tv, sofa, out var screenCenter, out var screenNormal, out var screenSize))
-            {
-                EditorUtility.DisplayDialog("Scène Menu", "La télé n'a pas de modèle 3D (MeshFilter).", "OK");
-                return;
-            }
-
-            var font = GetOrCreateFontAsset();
-            var background = GetBackgroundSprite();
-            EnsureXREventSystem(scene);
-
-            var old = scene.GetRootGameObjects().FirstOrDefault(g => g.name == k_RootName);
-            if (old != null)
+            var scene = EditorSceneManager.OpenScene(k_MenuScenePath, OpenSceneMode.Single);
+            foreach (var old in scene.GetRootGameObjects().Where(g => g.name == k_RootName))
                 Object.DestroyImmediate(old);
+            var instance = (GameObject)PrefabUtility.InstantiatePrefab(prefab, scene);
+            instance.name = k_RootName;
 
-            var root = new GameObject(k_RootName);
-            SceneManager.MoveGameObjectToScene(root, scene);
-            var menu = root.AddComponent<MainMenu>();
-            menu.gameScene = k_GameSceneName;
+            // Point "Yeux du joueur" : objet de la scène, conservé tel quel quand on relance le menu.
+            var eyes = scene.GetRootGameObjects().FirstOrDefault(g => g.name == k_EyesName);
+            var eyesCreated = eyes == null;
+            if (eyesCreated)
+            {
+                eyes = new GameObject(k_EyesName);
+                SceneManager.MoveGameObjectToScene(eyes, scene);
+                PlaceEyesOnSofa(scene, eyes.transform);
+            }
+            instance.GetComponent<MainMenu>().seatEyes = eyes.transform;
 
-            // --- Écran ---
-            var canvas = CreateCanvas(root.transform, screenCenter + screenNormal * k_ScreenGap, screenNormal, screenSize);
-            menu.screen = canvas.GetComponent<CanvasGroup>();
-            menu.lookTarget = canvas.transform;
-            BuildScreen(canvas.transform, menu, font, background);
-
-            // --- Joueur assis ---
-            var sofaBounds = GetBounds(sofa);
-            var floor = sofaBounds.min.y;
-            var toTv = screenCenter - sofaBounds.center;
-            toTv.y = 0f;
-            toTv.Normalize();
-            var seat = new Vector3(sofaBounds.center.x, floor, sofaBounds.center.z) + toTv * k_SeatForward;
-
-            menu.seatEyes = CreatePoint(root.transform, "Assise (yeux)", seat + Vector3.up * k_SeatEyeHeight, toTv);
-            menu.origin = origin;
-            // Le joueur démarre sur le canapé, face à la télé (aussi dans l'éditeur).
-            origin.transform.SetPositionAndRotation(seat, Quaternion.LookRotation(toTv, Vector3.up));
+            // Ce que le menu trouvera au lancement, pour prévenir tout de suite s'il manque quelque chose.
+            var transforms = scene.GetRootGameObjects().SelectMany(r => r.GetComponentsInChildren<Transform>(true)).ToList();
+            bool Has(params string[] names) =>
+                transforms.Any(t => names.Any(n => string.Equals(t.name, n, System.StringComparison.OrdinalIgnoreCase)));
+            var hasTv = transforms.Any(t => t.GetComponent<TvScreen>() != null) || Has("TV", "Télé", "Television");
+            var hasSofa = Has("sofa", "Canapé", "Canape", "Couch");
+            var hasPlayer = transforms.Any(t => t.GetComponent<Unity.XR.CoreUtils.XROrigin>() != null);
 
             EditorSceneManager.MarkSceneDirty(scene);
-            EditorSceneManager.SaveScene(scene, k_MenuScenePath);
-            var buildReport = AddScenesToBuild();
+            EditorSceneManager.SaveScene(scene);
+            var gameInBuild = PutMenuSceneFirstInBuild();
+            var hasVoice = AssetDatabase.LoadAssetAtPath<AudioClip>(k_StartVoicePath) != null;
+            Selection.activeGameObject = instance;
 
-            Selection.activeGameObject = root;
-            SceneView.lastActiveSceneView?.FrameSelected();
-
-            EditorUtility.DisplayDialog("Scène Menu",
-                (isNew ? "Scène créée et enregistrée : " : "Scène mise à jour et enregistrée : ") + k_MenuScenePath + "\n\n" +
-                "• Menu Jouer / Commandes / Quitter sur l'écran de la télé, au style de la page itch.io\n" +
-                "• Le joueur démarre assis sur le canapé, face à la télé, sans pouvoir se déplacer\n" +
-                $"• « Jouer » charge la scène {k_GameSceneName}\n" +
-                buildReport + "\n" +
-                "Si l'écran déborde du cadre ou ne colle pas à la dalle : sélectionner « Menu principal > Écran télé » " +
-                "et ajuster sa position / son échelle (même chose pour « Assise (yeux) »), puis Ctrl+S.\n\n" +
+            EditorUtility.DisplayDialog("Menu principal",
+                "Menu ajouté à la scène Menu, scène enregistrée.\n\n" +
+                "Au lancement :\n" +
+                "1. le joueur apparaît assis sur le canapé, face à la télé (il ne peut que tourner la tête)\n" +
+                "2. la télé grésille, puis affiche le logo et les boutons Jouer / Commandes / Quitter\n" +
+                $"3. « Jouer » : la télé s'éteint, fondu au noir, la scène {k_GameSceneName} se charge et la voix de début se lance\n\n" +
+                $"• Télé : {(hasTv ? "trouvée" : "⚠ INTROUVABLE (objet « TV »)")}\n" +
+                $"• Canapé : {(hasSofa ? "trouvé" : "⚠ INTROUVABLE (objet « sofa »)")}\n" +
+                $"• Joueur (XR Origin) : {(hasPlayer ? "trouvé" : "⚠ INTROUVABLE")}\n" +
+                "• Scène Menu placée en premier dans la liste des scènes du build\n" +
+                (gameInBuild ? "" : $"• {k_GameSceneName} ajoutée à la liste des scènes du build\n") +
+                $"• Voix de début : {(hasVoice ? "trouvée" : $"⚠ INTROUVABLE ({k_StartVoicePath})")}\n" +
+                (eyesCreated
+                    ? $"• Objet « {k_EyesName} » créé sur le canapé : déplacez-le pour régler la caméra (flèche bleue = regard)\n\n"
+                    : $"• Objet « {k_EyesName} » existant conservé\n\n") +
                 "Aucune autre scène n'a été modifiée.", "OK");
         }
 
-        // ---------- Décor de la scène Menu ----------
-
-        static void BuildEnvironment(Scene scene)
+        // Première position du point : au milieu du canapé, à hauteur d'yeux, tourné vers la télé.
+        static void PlaceEyesOnSofa(Scene scene, Transform eyes)
         {
-            Spawn(scene, k_RoomPath, "SousSol", new Vector3(-1.7787f, 5.14f, -0.23428f), Quaternion.identity, null);
-            Spawn(scene, k_SofaPath, "sofa", new Vector3(8.6001f, 0.6841f, 10.8891f),
-                new Quaternion(-0.44708574f, -0.54315734f, -0.5359183f, -0.4667827f), new Vector3(21.301538f, 44.631203f, 8.415323f));
-            var tvRotation = new Quaternion(-0.7071068f, 0f, 0f, 0.7071067f);
-            Spawn(scene, k_TvPath, "TV", new Vector3(11.6174f, 0.373f, 11.258f), tvRotation, Vector3.one * 123.28f);
-            Spawn(scene, k_TablePath, "SM_table", new Vector3(11.593f, 0f, 11.2516f), tvRotation, new Vector3(28.131765f, 53.152157f, 28.131765f));
-            Spawn(scene, k_XROriginPath, "XR Origin Hands (XR Rig)", Vector3.zero, Quaternion.identity, Vector3.one * 0.9f);
-            Spawn(scene, k_HandsPermissionsPath, "Hands Permissions Manager", Vector3.zero, Quaternion.identity, null);
-
-            // Pièce plongée dans le noir : seulement une lampe chaude au plafond et la lueur de la télé.
-            RenderSettings.skybox = null;
-            RenderSettings.ambientMode = AmbientMode.Flat;
-            RenderSettings.ambientLight = new Color(0.04f, 0.045f, 0.06f);
-
-            var tv = FindByName(scene, k_TvNames);
-            var sofa = FindByName(scene, k_SofaNames);
-            if (tv == null || sofa == null)
+            var transforms = scene.GetRootGameObjects().SelectMany(r => r.GetComponentsInChildren<Transform>(true)).ToList();
+            Transform Find(params string[] names) =>
+                transforms.FirstOrDefault(t => names.Any(n => string.Equals(t.name, n, System.StringComparison.OrdinalIgnoreCase)));
+            var sofa = Find("sofa", "Canapé", "Canape", "Couch");
+            var tvScreen = transforms.Select(t => t.GetComponent<TvScreen>()).FirstOrDefault(t => t != null);
+            var tv = tvScreen != null ? tvScreen.transform : Find("TV", "Télé", "Television");
+            if (sofa == null)
                 return;
-            var tvBounds = GetBounds(tv);
+
             var sofaBounds = GetBounds(sofa);
-            var between = (tvBounds.center + sofaBounds.center) / 2f;
-            CreateLight(scene, "Lampe", new Vector3(between.x, sofaBounds.min.y + 2.3f, between.z),
-                new Color(1f, 0.78f, 0.55f), 1.2f, 6f);
-            var towardSofa = sofaBounds.center - tvBounds.center;
-            towardSofa.y = 0f;
-            CreateLight(scene, "Lueur de la télé", tvBounds.center + towardSofa.normalized * 0.5f,
-                new Color(0.75f, 0.8f, 1f), 0.6f, 3f);
+            var forward = tv != null ? GetBounds(tv).center - sofaBounds.center : Vector3.forward;
+            forward.y = 0f;
+            forward = forward.sqrMagnitude > 0.0001f ? forward.normalized : Vector3.forward;
+            eyes.position = new Vector3(sofaBounds.center.x, sofaBounds.min.y + k_DefaultEyeHeight, sofaBounds.center.z) + forward * 0.1f;
+            eyes.rotation = Quaternion.LookRotation(forward, Vector3.up);
         }
 
-        static void Spawn(Scene scene, string path, string name, Vector3 position, Quaternion rotation, Vector3? scale)
+        static Bounds GetBounds(Transform t)
         {
-            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
-            if (prefab == null)
-            {
-                Debug.LogWarning($"Scène Menu : modèle introuvable, ignoré : {path}");
-                return;
-            }
-            var go = (GameObject)PrefabUtility.InstantiatePrefab(prefab, scene);
-            go.name = name;
-            go.transform.SetPositionAndRotation(position, rotation);
-            if (scale.HasValue)
-                go.transform.localScale = scale.Value;
+            var renderers = t.GetComponentsInChildren<Renderer>(true);
+            if (renderers.Length == 0)
+                return new Bounds(t.position, Vector3.zero);
+            var b = renderers[0].bounds;
+            foreach (var r in renderers)
+                b.Encapsulate(r.bounds);
+            return b;
         }
 
-        static void CreateLight(Scene scene, string name, Vector3 position, Color color, float intensity, float range)
-        {
-            var go = new GameObject(name);
-            SceneManager.MoveGameObjectToScene(go, scene);
-            go.transform.position = position;
-            var light = go.AddComponent<Light>();
-            light.type = LightType.Point;
-            light.color = color;
-            light.intensity = intensity;
-            light.range = range;
-            light.shadows = LightShadows.None; // Quest : pas d'ombres temps réel
-        }
-
-        // Les rayons / doigts XR ne cliquent sur l'UI que si l'EventSystem utilise XRUIInputModule.
-        static void EnsureXREventSystem(Scene scene)
-        {
-            var eventSystem = scene.GetRootGameObjects().Select(g => g.GetComponentInChildren<EventSystem>(true)).FirstOrDefault(e => e != null);
-            if (eventSystem == null)
-            {
-                var go = new GameObject("EventSystem", typeof(EventSystem), typeof(XRUIInputModule));
-                SceneManager.MoveGameObjectToScene(go, scene);
-                return;
-            }
-            if (eventSystem.GetComponent<XRUIInputModule>() != null)
-                return;
-            foreach (var module in eventSystem.GetComponents<BaseInputModule>())
-                Object.DestroyImmediate(module);
-            eventSystem.gameObject.AddComponent<XRUIInputModule>();
-        }
-
-        // Menu en premier (scène de lancement), la scène du jeu juste après. Les autres scènes de la liste restent.
-        static string AddScenesToBuild()
+        // Scène Menu en premier : c'est elle qui se lance au démarrage du jeu.
+        // Renvoie true si la scène du jeu était déjà dans la liste (sinon elle est ajoutée après le menu).
+        static bool PutMenuSceneFirstInBuild()
         {
             var scenes = EditorBuildSettings.scenes.Where(s => s.path != k_MenuScenePath).ToList();
             scenes.Insert(0, new EditorBuildSettingsScene(k_MenuScenePath, true));
+            var gamePath = $"Assets/Scenes/{k_GameSceneName}.unity";
+            var game = scenes.FindIndex(s => s.path == gamePath);
+            var wasThere = game >= 0 && scenes[game].enabled;
+            if (game >= 0)
+                scenes[game].enabled = true;
+            else
+                scenes.Insert(1, new EditorBuildSettingsScene(gamePath, true));
             EditorBuildSettings.scenes = scenes.ToArray();
-
-            var game = scenes.FirstOrDefault(s => System.IO.Path.GetFileNameWithoutExtension(s.path) == k_GameSceneName);
-            return game != null && game.enabled
-                ? $"• Liste des scènes du build : Menu en premier, puis {k_GameSceneName}\n"
-                : $"• Liste des scènes du build : Menu ajouté. ⚠ Ajouter aussi {k_GameSceneName} (File > Build Profiles)\n";
+            return wasThere;
         }
 
-        // ---------- Recherche de la télé et de l'écran ----------
+        // ---------- Prefab ----------
 
-        static GameObject FindByName(Scene scene, string[] names)
+        static GameObject BuildPrefab()
         {
-            foreach (var root in scene.GetRootGameObjects())
-            foreach (var t in root.GetComponentsInChildren<Transform>(true))
-                if (names.Any(n => string.Equals(t.name, n, System.StringComparison.OrdinalIgnoreCase)))
-                    return t.gameObject;
-            return null;
-        }
+            var font = GetOrCreateFontAsset();
+            // Texture affichée telle quelle (RawImage) : pas besoin de réglage d'import "Sprite".
+            var logo = AssetDatabase.LoadAssetAtPath<Texture2D>(k_LogoPath);
+            if (logo == null)
+                Debug.LogWarning($"Menu principal : logo introuvable : {k_LogoPath}");
 
-        static Bounds GetBounds(GameObject go)
-        {
-            var renderers = go.GetComponentsInChildren<Renderer>();
-            if (renderers.Length == 0)
-                return new Bounds(go.transform.position, Vector3.zero);
-            var bounds = renderers[0].bounds;
-            foreach (var r in renderers)
-                bounds.Encapsulate(r.bounds);
-            return bounds;
-        }
-
-        // Face de la télé tournée vers le canapé : centre, normale (horizontale) et taille utile de la dalle (m).
-        static bool TryGetScreen(GameObject tv, GameObject sofa, out Vector3 center, out Vector3 normal, out Vector2 size)
-        {
-            center = normal = Vector3.zero;
-            size = Vector2.zero;
-
-            var filter = tv.GetComponentsInChildren<MeshFilter>()
-                .Where(f => f.sharedMesh != null && f.GetComponent<Renderer>() != null)
-                .OrderByDescending(f => f.GetComponent<Renderer>().bounds.size.sqrMagnitude)
-                .FirstOrDefault();
-            if (filter == null)
-                return false;
-
-            var t = filter.transform;
-            var local = filter.sharedMesh.bounds;
-            var toSofa = GetBounds(sofa).center - t.TransformPoint(local.center);
-            toSofa.y = 0f;
-
-            // Axes locaux du modèle exprimés dans le monde, avec leur longueur réelle (échelle comprise).
-            var axes = new[] { t.right, t.up, t.forward };
-            var scale = t.lossyScale;
-            var lengths = new[] { local.size.x * Mathf.Abs(scale.x), local.size.y * Mathf.Abs(scale.y), local.size.z * Mathf.Abs(scale.z) };
-            var localAxes = new[] { Vector3.right, Vector3.up, Vector3.forward };
-
-            // Face avant : l'axe le plus aligné avec la direction du canapé.
-            var front = Enumerable.Range(0, 3).OrderByDescending(i => Mathf.Abs(Vector3.Dot(axes[i], toSofa.normalized))).First();
-            var sign = Mathf.Sign(Vector3.Dot(axes[front], toSofa));
-            // Hauteur : l'axe le plus vertical parmi les deux autres ; largeur : le dernier.
-            var others = Enumerable.Range(0, 3).Where(i => i != front).ToArray();
-            var vertical = others.OrderByDescending(i => Mathf.Abs(Vector3.Dot(axes[i], Vector3.up))).First();
-            var horizontal = others.First(i => i != vertical);
-
-            normal = axes[front] * sign;
-            normal.y = 0f;
-            normal.Normalize();
-            center = t.TransformPoint(local.center + localAxes[front] * sign * local.extents[front]);
-
-            var width = lengths[horizontal];
-            var height = lengths[vertical];
-            // Télé posée sur un pied : la boîte englobante est trop haute. On garde une dalle 16:9 en haut.
-            var screenHeight = width * 9f / 16f;
-            if (height > screenHeight * 1.15f)
+            var root = new GameObject(k_RootName);
+            try
             {
-                var top = filter.GetComponent<Renderer>().bounds.max.y;
-                center.y = top - screenHeight / 2f - width * k_Bezel / 2f;
-                height = screenHeight;
+                var menu = root.AddComponent<MainMenu>();
+                menu.gameScene = k_GameSceneName;
+                menu.startVoice = AssetDatabase.LoadAssetAtPath<AudioClip>(k_StartVoicePath);
+
+                var canvasGo = new GameObject("Écran télé", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler),
+                    typeof(TrackedDeviceGraphicRaycaster));
+                canvasGo.layer = LayerMask.NameToLayer("UI");
+                canvasGo.transform.SetParent(root.transform, false);
+                canvasGo.GetComponent<Canvas>().renderMode = RenderMode.WorldSpace;
+                canvasGo.GetComponent<CanvasScaler>().dynamicPixelsPerUnit = 4f; // texte net en VR
+                var screen = canvasGo.GetComponent<RectTransform>();
+                screen.sizeDelta = k_ScreenSize;
+                screen.localScale = Vector3.one * 0.001f; // taille provisoire, recalculée au lancement
+                menu.screen = screen;
+
+                // Dalle noire : la télé "éteinte" avant le grésillement.
+                var black = NewImage(screen, "Noir", Color.black);
+                black.raycastTarget = false;
+                Stretch(black.rectTransform);
+
+                // Menu : fond, logo et bouton Jouer, qui apparaissent en fondu.
+                var menuPage = new GameObject("Menu", typeof(RectTransform), typeof(CanvasGroup));
+                menuPage.layer = canvasGo.layer;
+                menuPage.transform.SetParent(screen, false);
+                Stretch((RectTransform)menuPage.transform);
+                menu.menuGroup = menuPage.GetComponent<CanvasGroup>();
+                BuildMenuPage(menuPage.transform, menu, font, logo);
+
+                // Neige par-dessus tout (la texture est générée au lancement).
+                var noise = new GameObject("Neige", typeof(RectTransform), typeof(RawImage));
+                noise.layer = canvasGo.layer;
+                noise.transform.SetParent(screen, false);
+                Stretch((RectTransform)noise.transform);
+                menu.staticImage = noise.GetComponent<RawImage>();
+                menu.staticImage.raycastTarget = false;
+                menu.staticImage.enabled = false;
+
+                return PrefabUtility.SaveAsPrefabAsset(root, k_PrefabPath);
             }
-
-            size = new Vector2(width * (1f - 2f * k_Bezel), height * (1f - 2f * k_Bezel));
-            return true;
+            finally
+            {
+                Object.DestroyImmediate(root);
+            }
         }
 
-        static Transform CreatePoint(Transform parent, string name, Vector3 position, Vector3 forward)
+        static void BuildMenuPage(Transform page, MainMenu menu, TMP_FontAsset titleFont, Texture2D logo)
         {
-            var point = new GameObject(name).transform;
-            point.SetParent(parent, false);
-            point.SetPositionAndRotation(position, Quaternion.LookRotation(forward, Vector3.up));
-            return point;
-        }
-
-        // ---------- Écran ----------
-
-        static GameObject CreateCanvas(Transform parent, Vector3 position, Vector3 normal, Vector2 sizeMeters)
-        {
-            var go = new GameObject("Écran télé", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler),
-                typeof(CanvasGroup), typeof(TrackedDeviceGraphicRaycaster));
-            go.layer = LayerMask.NameToLayer("UI");
-            go.transform.SetParent(parent, false);
-
-            go.GetComponent<Canvas>().renderMode = RenderMode.WorldSpace;
-            go.GetComponent<CanvasScaler>().dynamicPixelsPerUnit = 4f; // texte net en VR
-
-            // Mise à l'échelle : la zone 1600 x 900 tient dans la dalle, le reste est rempli par le fond.
-            var scale = Mathf.Min(sizeMeters.x / k_ScreenSize.x, sizeMeters.y / k_ScreenSize.y);
-            var rect = go.GetComponent<RectTransform>();
-            rect.sizeDelta = sizeMeters / scale;
-            rect.localScale = Vector3.one * scale;
-            // L'UI se lit depuis l'arrière de son axe Z : on la tourne pour qu'elle regarde le canapé.
-            rect.SetPositionAndRotation(position, Quaternion.LookRotation(-normal, Vector3.up));
-            return go;
-        }
-
-        static void BuildScreen(Transform screen, MainMenu menu, TMP_FontAsset titleFont, Sprite background)
-        {
-            // Fond : la porte entrouverte, assombrie à gauche pour lire le texte.
-            var bg = NewImage(screen, "Fond", Color.white);
+            var bg = NewImage(page, "Fond", new Color32(10, 11, 13, 255));
             Stretch(bg.rectTransform);
-            bg.sprite = background;
-            bg.color = background != null ? Color.white : new Color32(10, 11, 13, 255);
             bg.raycastTarget = true; // bloque les rayons derrière l'écran
 
-            var shade = NewImage(screen, "Ombre gauche", new Color(0f, 0f, 0f, 0.55f));
-            Place(shade.rectTransform, new Vector2(0f, 0f), new Vector2(0.6f, 1f), Vector2.zero, Vector2.zero);
-            shade.raycastTarget = false;
+            // Logo à gauche (la porte remplace le « o », la clé le « t »), légèrement teinté crème.
+            const float logoHeight = 800f;
+            if (logo != null)
+            {
+                var go = new GameObject("Logo", typeof(RectTransform), typeof(RawImage));
+                go.layer = page.gameObject.layer;
+                go.transform.SetParent(page, false);
+                var image = go.GetComponent<RawImage>();
+                image.texture = logo;
+                image.color = k_Cream;
+                image.raycastTarget = false;
+                Place(image.rectTransform, new Vector2(-360f, 0f), new Vector2(logoHeight * logo.width / logo.height, logoHeight));
+            }
+            else
+            {
+                var amber = ColorUtility.ToHtmlStringRGB(k_Amber);
+                var title = NewText(page, "Logo", $"Alone\n<color=#{amber}>At</color>\nNight", 150, k_Cream);
+                if (titleFont != null)
+                    title.font = titleFont;
+                title.alignment = TextAlignmentOptions.Center;
+                Place(title.rectTransform, new Vector2(-360f, 0f), new Vector2(720f, logoHeight));
+            }
 
-            // Titre.
-            var title = NewText(screen, "Titre", $"Alone <color=#{ColorUtility.ToHtmlStringRGB(k_Amber)}>At</color> Night", 120, k_Cream);
-            if (titleFont != null)
-                title.font = titleFont;
-            title.alignment = TextAlignmentOptions.BottomLeft;
-            title.textWrappingMode = TextWrappingModes.NoWrap;
-            PlaceTopLeft(title.rectTransform, new Vector2(k_Margin, -110f), new Vector2(1300f, 180f));
-
-            var line = NewImage(screen, "Filet", k_Amber);
-            line.raycastTarget = false;
-            PlaceTopLeft(line.rectTransform, new Vector2(k_Margin + 4f, -333f), new Vector2(70f, 3f));
-            var subtitle = NewText(screen, "Sous-titre", "ESCAPE GAME VR", 30, k_Muted);
+            // À droite : page principale (Jouer / Commandes / Quitter) ou page des commandes.
+            const float right = 400f;
+            var main = NewPage(page, "Page principale");
+            var subtitle = NewText(main, "Sous-titre", "ESCAPE GAME VR", 34, k_Muted);
             subtitle.characterSpacing = 25f;
-            subtitle.alignment = TextAlignmentOptions.Left;
-            PlaceTopLeft(subtitle.rectTransform, new Vector2(k_Margin + 100f, -312f), new Vector2(700f, 44f));
+            subtitle.alignment = TextAlignmentOptions.Center;
+            Place(subtitle.rectTransform, new Vector2(right, 250f), new Vector2(600f, 50f));
+            Place(NewImage(main, "Filet gauche", k_Amber).rectTransform, new Vector2(right - 270f, 250f), new Vector2(60f, 3f));
+            Place(NewImage(main, "Filet droit", k_Amber).rectTransform, new Vector2(right + 270f, 250f), new Vector2(60f, 3f));
 
-            // Page principale.
-            var main = NewPage(screen, "Page principale");
-            AddButton(main, "Jouer", -420f, menu.Play);
-            AddButton(main, "Commandes", -510f, menu.ShowControls);
-            AddButton(main, "Quitter", -600f, menu.Quit);
-            menu.mainPage = main.gameObject;
+            menu.playButton = NewButton(main, "Jouer", "JOUER", new Vector2(right, 100f));
+            menu.controlsButton = NewButton(main, "Commandes", "COMMANDES", new Vector2(right, -35f));
+            menu.quitButton = NewButton(main, "Quitter", "QUITTER", new Vector2(right, -170f));
 
-            // Page des commandes.
-            var controls = NewPage(screen, "Page commandes");
-            var help = NewText(controls, "Commandes",
-                "<color=#" + ColorUtility.ToHtmlStringRGB(k_Amber) + ">Joystick gauche</color>   se déplacer\n" +
-                "<color=#" + ColorUtility.ToHtmlStringRGB(k_Amber) + ">Joystick droit</color>   tourner\n" +
-                "<color=#" + ColorUtility.ToHtmlStringRGB(k_Amber) + ">Grip</color>   attraper un objet\n" +
-                "<color=#" + ColorUtility.ToHtmlStringRGB(k_Amber) + ">Gâchette</color>   interagir (boutons, digicode)", 34, k_Cream);
-            help.alignment = TextAlignmentOptions.TopLeft;
-            help.lineSpacing = 30f;
-            PlaceTopLeft(help.rectTransform, new Vector2(k_Margin, -410f), new Vector2(900f, 260f));
-            AddButton(controls, "Retour", -700f, menu.ShowMain);
+            var hint = NewText(main, "Aide", "Visez un bouton avec la manette\net appuyez sur la gâchette", 26, k_Dim);
+            hint.alignment = TextAlignmentOptions.Center;
+            Place(hint.rectTransform, new Vector2(right, -310f), new Vector2(600f, 80f));
+
+            var controls = NewPage(page, "Page commandes");
+            var heading = NewText(controls, "Titre", "COMMANDES", 40, k_Muted);
+            heading.characterSpacing = 25f;
+            heading.alignment = TextAlignmentOptions.Center;
+            Place(heading.rectTransform, new Vector2(right, 280f), new Vector2(600f, 60f));
+            var amberHex = ColorUtility.ToHtmlStringRGB(k_Amber);
+            var help = NewText(controls, "Liste",
+                $"<color=#{amberHex}>Joystick gauche</color>\nse déplacer\n\n" +
+                $"<color=#{amberHex}>Joystick droit</color>\ntourner\n\n" +
+                $"<color=#{amberHex}>Grip</color> (bouton latéral)\nattraper un objet\n\n" +
+                $"<color=#{amberHex}>Gâchette</color>\ninteragir (boutons, digicode)", 30, k_Cream);
+            help.alignment = TextAlignmentOptions.Center;
+            Place(help.rectTransform, new Vector2(right, 30f), new Vector2(640f, 420f));
+            menu.backButton = NewButton(controls, "Retour", "RETOUR", new Vector2(right, -300f));
             controls.gameObject.SetActive(false);
-            menu.controlsPage = controls.gameObject;
 
-            // Aide en bas de l'écran.
-            var hint = NewText(screen, "Aide", "Visez avec la manette et appuyez sur la gâchette", 24, k_Dim);
-            hint.alignment = TextAlignmentOptions.BottomLeft;
-            Place(hint.rectTransform, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(0f, 0f),
-                new Vector2(1000f, 40f), new Vector2(k_Margin, 50f));
+            menu.mainPage = main.gameObject;
+            menu.controlsPage = controls.gameObject;
         }
 
         static RectTransform NewPage(Transform parent, string name)
@@ -402,31 +289,44 @@ namespace EscapeGame.Editor
             return page;
         }
 
-        // Bouton texte à gauche : fond ambré invisible, qui s'allume quand le rayon le survole.
-        static void AddButton(Transform parent, string label, float top, UnityAction action)
+        // Bouton à cadre ambré, dont le fond s'allume quand le rayon le survole.
+        static Button NewButton(Transform parent, string name, string text, Vector2 position)
         {
-            var image = NewImage(parent, label, k_Amber);
-            PlaceTopLeft(image.rectTransform, new Vector2(k_Margin - 24f, top), new Vector2(440f, 74f));
+            var size = new Vector2(420f, 100f);
+            var frame = NewImage(parent, name, k_Amber);
+            frame.sprite = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/UISprite.psd");
+            frame.type = Image.Type.Sliced;
+            frame.raycastTarget = true; // c'est lui que le rayon vise
+            Place(frame.rectTransform, position, size);
 
-            var button = image.gameObject.AddComponent<Button>();
-            button.targetGraphic = image;
+            var button = frame.gameObject.AddComponent<Button>();
+            button.targetGraphic = frame;
             var colors = button.colors;
-            colors.normalColor = new Color(1f, 1f, 1f, 0f);
-            colors.highlightedColor = new Color(1f, 1f, 1f, 0.3f);
-            colors.selectedColor = new Color(1f, 1f, 1f, 0f);
-            colors.pressedColor = new Color(1f, 1f, 1f, 0.6f);
+            colors.normalColor = new Color(1f, 1f, 1f, 0.15f);
+            colors.highlightedColor = new Color(1f, 1f, 1f, 0.55f);
+            colors.selectedColor = new Color(1f, 1f, 1f, 0.15f);
+            colors.pressedColor = new Color(1f, 1f, 1f, 0.85f);
             colors.fadeDuration = 0.08f;
             button.colors = colors;
-            UnityEventTools.AddPersistentListener(button.onClick, action);
 
-            var accent = NewImage(image.transform, "Trait", k_Amber);
-            accent.raycastTarget = false;
-            Place(accent.rectTransform, new Vector2(0f, 0.2f), new Vector2(0f, 0.8f), new Vector2(0f, 0.5f), new Vector2(4f, 0f));
+            // Cadre fixe (4 traits) : reste visible, alors que le fond du bouton ne s'allume qu'au survol.
+            foreach (var (pos, lineSize) in new[]
+                     {
+                         (new Vector2(0f, size.y / 2f), new Vector2(size.x, 3f)), (new Vector2(0f, -size.y / 2f), new Vector2(size.x, 3f)),
+                         (new Vector2(-size.x / 2f, 0f), new Vector2(3f, size.y)), (new Vector2(size.x / 2f, 0f), new Vector2(3f, size.y)),
+                     })
+            {
+                var line = NewImage(frame.transform, "Cadre", k_Amber);
+                line.raycastTarget = false;
+                Place(line.rectTransform, pos, lineSize);
+            }
 
-            var text = NewText(image.transform, "Label", label, 42, k_Cream);
-            text.alignment = TextAlignmentOptions.Left;
-            Stretch(text.rectTransform);
-            text.rectTransform.offsetMin = new Vector2(24f, 0f);
+            var label = NewText(frame.transform, "Label", text, 46, k_Cream);
+            label.characterSpacing = 12f;
+            label.alignment = TextAlignmentOptions.Center;
+            label.raycastTarget = false;
+            Stretch(label.rectTransform);
+            return button;
         }
 
         static Image NewImage(Transform parent, string name, Color color)
@@ -436,6 +336,7 @@ namespace EscapeGame.Editor
             go.transform.SetParent(parent, false);
             var image = go.GetComponent<Image>();
             image.color = color;
+            image.raycastTarget = false;
             return image;
         }
 
@@ -453,24 +354,19 @@ namespace EscapeGame.Editor
             return text;
         }
 
-        static void PlaceTopLeft(RectTransform rect, Vector2 position, Vector2 size) =>
-            Place(rect, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f), size, position);
-
-        static void Place(RectTransform rect, Vector2 anchorMin, Vector2 anchorMax, Vector2 pivot, Vector2 size,
-            Vector2 position = default)
+        // Position mesurée depuis le centre de l'écran.
+        static void Place(RectTransform rect, Vector2 position, Vector2 size)
         {
-            rect.anchorMin = anchorMin;
-            rect.anchorMax = anchorMax;
-            rect.pivot = pivot;
-            rect.sizeDelta = size;
+            rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0.5f);
             rect.anchoredPosition = position;
+            rect.sizeDelta = size;
         }
 
         static void Stretch(RectTransform rect) => PuzzleScreenMenu.Stretch(rect);
 
         // ---------- Ressources ----------
 
-        // Police du titre (comme la page itch.io). Font asset TextMeshPro créé une seule fois à côté du .ttf.
+        // Police du logo (comme la page itch.io). Font asset TextMeshPro créé une seule fois à côté du .ttf.
         static TMP_FontAsset GetOrCreateFontAsset()
         {
             var asset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(k_FontAssetPath);
@@ -480,7 +376,7 @@ namespace EscapeGame.Editor
             var font = AssetDatabase.LoadAssetAtPath<Font>(k_FontPath);
             if (font == null)
             {
-                Debug.LogWarning($"Police introuvable : {k_FontPath}. Le titre utilisera la police par défaut.");
+                Debug.LogWarning($"Police introuvable : {k_FontPath}. Le logo utilisera la police par défaut.");
                 return null;
             }
 
@@ -495,18 +391,6 @@ namespace EscapeGame.Editor
             AssetDatabase.AddObjectToAsset(asset.material, asset);
             AssetDatabase.SaveAssets();
             return asset;
-        }
-
-        static Sprite GetBackgroundSprite()
-        {
-            if (AssetImporter.GetAtPath(k_BackgroundPath) is TextureImporter importer &&
-                importer.textureType != TextureImporterType.Sprite)
-            {
-                importer.textureType = TextureImporterType.Sprite;
-                importer.mipmapEnabled = true; // vu de loin dans le casque : évite le scintillement
-                importer.SaveAndReimport();
-            }
-            return AssetDatabase.LoadAssetAtPath<Sprite>(k_BackgroundPath);
         }
     }
 }
