@@ -40,12 +40,20 @@ namespace EscapeGame
         Vector3 m_HandAtGrab;
         float m_AngleAtGrab;
         bool m_AtLimit;
+        bool m_SoundOpen;
+        bool m_Ready;
+        float m_LastRattleSound = -10f;
+
+        const float k_OpenedSound = 4f; // °
+        const float k_ClosedSound = 0.5f;
 
         void Awake()
         {
             m_Interactable = GetComponent<XRSimpleInteractable>();
             m_ClosedRotation = transform.localRotation;
             SetAngle(startAngle);
+            m_SoundOpen = Angle > k_OpenedSound;
+            m_Ready = true;
         }
 
         void OnEnable()
@@ -93,6 +101,11 @@ namespace EscapeGame
                 SetAngle(strength * rattleAngle * (0.5f + 0.5f * Mathf.Sin(Time.time * 60f)));
                 if (strength > 0f)
                     Vibrate(rattleHaptic * strength, Time.deltaTime * 2f);
+                if (strength > 0.3f && Time.time - m_LastRattleSound > 0.6f)
+                {
+                    m_LastRattleSound = Time.time;
+                    GameSounds.Play(GameSounds.Bank?.doorLocked, transform.position);
+                }
                 return;
             }
 
@@ -126,6 +139,20 @@ namespace EscapeGame
         {
             Angle = angle;
             transform.localRotation = Quaternion.AngleAxis(Mathf.Sign(openSign) * angle, m_ClosedRotation * Vector3.up) * m_ClosedRotation;
+
+            // Son d'ouverture quand la porte quitte la position fermée, son de fermeture quand elle y revient.
+            if (!m_SoundOpen && angle > k_OpenedSound)
+            {
+                m_SoundOpen = true;
+                if (m_Ready)
+                    GameSounds.Play(GameSounds.Bank?.doorOpen, transform.position);
+            }
+            else if (m_SoundOpen && angle < k_ClosedSound)
+            {
+                m_SoundOpen = false;
+                if (m_Ready)
+                    GameSounds.Play(GameSounds.Bank?.doorClose, transform.position);
+            }
         }
 
         // Axe de la charnière (vertical de la porte fermée), dans le monde.

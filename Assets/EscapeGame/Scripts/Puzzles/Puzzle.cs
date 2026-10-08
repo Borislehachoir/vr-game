@@ -42,15 +42,21 @@ namespace EscapeGame
             if (IsSolved)
                 return;
             IsSolved = true;
+            GameSounds.Play(SolvedSound, transform.position);
             OnSolved();
             onSolved.Invoke();
         }
 
         protected void Fail()
         {
+            GameSounds.Play(FailedSound, transform.position);
             OnFailed();
             onFailed.Invoke();
         }
+
+        /// <summary>Sons de réussite / d'échec (réglés dans « Sons du jeu »).</summary>
+        protected virtual AudioClip SolvedSound => GameSounds.Bank?.puzzleSolved;
+        protected virtual AudioClip FailedSound => GameSounds.Bank?.puzzleFailed;
 
         public virtual void ResetPuzzle()
         {

@@ -311,24 +311,10 @@ namespace EscapeGame.Editor
             renderer.sharedMaterial = off;
             renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
 
-            // Lueur de l'écran sur la pièce : lumière temps réel, allumée avec la télé (pas d'ombre : légère sur Quest).
-            var glowGo = new GameObject("Lueur écran");
-            glowGo.transform.SetParent(screen.transform, false);
-            glowGo.transform.position = screen.transform.position + filter.transform.TransformDirection(front).normalized * 0.6f;
-            var glow = glowGo.AddComponent<Light>();
-            glow.type = LightType.Point;
-            glow.lightmapBakeType = LightmapBakeType.Realtime;
-            glow.range = 3f;
-            glow.intensity = 1.5f;
-            glow.color = new Color(0.75f, 0.85f, 1f);
-            glow.shadows = LightShadows.None;
-            glow.enabled = false;
-
             var tvScreen = screen.AddComponent<TvScreen>();
             tvScreen.screen = renderer;
             tvScreen.offMaterial = off;
             tvScreen.onMaterial = on;
-            tvScreen.glow = glow;
 
             foreach (var remote in Object.FindObjectsByType<TvRemote>(FindObjectsSortMode.None).Where(r => r.tv == null))
             {

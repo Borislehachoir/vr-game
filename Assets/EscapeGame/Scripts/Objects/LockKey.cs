@@ -46,13 +46,33 @@ namespace EscapeGame
         void OnEnable()
         {
             s_All.Add(this);
+            Grab.selectEntered.AddListener(OnGrabbed);
             Grab.selectExited.AddListener(OnReleased);
         }
 
         void OnDisable()
         {
             s_All.Remove(this);
+            Grab.selectEntered.RemoveListener(OnGrabbed);
             Grab.selectExited.RemoveListener(OnReleased);
+        }
+
+        float m_LastDropSound = -10f;
+
+        void OnGrabbed(SelectEnterEventArgs args)
+        {
+            if (InsertedIn == null)
+                GameSounds.Play(GameSounds.Bank?.keyGrab, transform.position);
+        }
+
+        // Bruit de clé quand elle tombe ou est posée (pas quand elle frôle quelque chose en main).
+        void OnCollisionEnter(Collision collision)
+        {
+            if (Grab.isSelected || collision.relativeVelocity.magnitude < 0.5f || Time.time - m_LastDropSound < 0.3f)
+                return;
+            m_LastDropSound = Time.time;
+            var volume = Mathf.Clamp01(collision.relativeVelocity.magnitude / 3f);
+            GameSounds.Play(GameSounds.Bank?.keyDrop, transform.position, volume);
         }
 
         // Lâchée dans la serrure : elle y reste (sinon XRI la rendrait à la gravité).
@@ -86,6 +106,7 @@ namespace EscapeGame
             // Suit la main sans physique pendant qu'elle est dans la serrure (pas de tremblement contre le cadenas).
             Grab.movementType = XRBaseInteractable.MovementType.Instantaneous;
             Vibrate(0.3f, 0.05f);
+            GameSounds.Play(GameSounds.Bank?.keyInsert, transform.position);
         }
 
         internal void Remove()

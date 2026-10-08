@@ -87,6 +87,7 @@ namespace EscapeGame
             IsUnlocked = true;
             if (m_Inserted != null)
                 m_Inserted.Vibrate(0.8f, 0.15f);
+            GameSounds.Play(GameSounds.Bank?.padlockUnlock, transform.position);
             StartCoroutine(OpenSequence());
         }
 

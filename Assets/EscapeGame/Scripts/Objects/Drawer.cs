@@ -54,6 +54,12 @@ namespace EscapeGame
         readonly Collider[] m_Overlaps = new Collider[32];
         readonly HashSet<Rigidbody> m_Moved = new HashSet<Rigidbody>();
         Collider[] m_OwnColliders;
+        bool m_SoundOpen;
+        bool m_Ready;
+        float m_LastRattleSound = -10f;
+
+        const float k_OpenedSound = 0.02f; // m
+        const float k_ClosedSound = 0.003f;
 
         void Awake()
         {
@@ -63,6 +69,8 @@ namespace EscapeGame
                 frame = transform.parent;
             SetOpen(startOpen);
             m_LastFixedPosition = transform.position;
+            m_SoundOpen = OpenAmount > k_OpenedSound;
+            m_Ready = true;
         }
 
         void OnEnable()
@@ -108,6 +116,11 @@ namespace EscapeGame
                 SetOpen(strength * rattleAmplitude * (0.5f + 0.5f * Mathf.Sin(Time.time * 60f)));
                 if (strength > 0f)
                     Vibrate(rattleHaptic * strength, Time.deltaTime * 2f);
+                if (strength > 0.3f && Time.time - m_LastRattleSound > 0.6f)
+                {
+                    m_LastRattleSound = Time.time;
+                    GameSounds.Play(GameSounds.Bank?.drawerLocked, transform.position);
+                }
                 return;
             }
 
@@ -168,8 +181,26 @@ namespace EscapeGame
         void SetOpen(float open)
         {
             OpenAmount = open;
+            PlayOpenCloseSound(open);
             if (frame != null)
                 transform.position = frame.TransformPoint(closedPosition) + frame.TransformDirection(openDirection).normalized * open;
+        }
+
+        // Son d'ouverture quand le tiroir quitte la position fermée, son de fermeture quand il y revient.
+        void PlayOpenCloseSound(float open)
+        {
+            if (!m_SoundOpen && open > k_OpenedSound)
+            {
+                m_SoundOpen = true;
+                if (m_Ready)
+                    GameSounds.Play(GameSounds.Bank?.drawerOpen, transform.position);
+            }
+            else if (m_SoundOpen && open < k_ClosedSound)
+            {
+                m_SoundOpen = false;
+                if (m_Ready)
+                    GameSounds.Play(GameSounds.Bank?.drawerClose, transform.position);
+            }
         }
 
         Vector3 HandPosition()

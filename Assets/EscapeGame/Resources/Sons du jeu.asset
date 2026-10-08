@@ -1,0 +1,61 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 53b831ee0b89cf3449204ccf80b73c16, type: 3}
+  m_Name: Sons du jeu
+  m_EditorClassIdentifier: 
+  drawerOpen: {fileID: 8300000, guid: 932b46dd41143cd49bd69eb95a7e9cb9, type: 3}
+  drawerClose: {fileID: 8300000, guid: 33d15f03f4b5567419d07124cac245de, type: 3}
+  drawerLocked: {fileID: 8300000, guid: a46b00fc81aa78740a4a20b7bf11e639, type: 3}
+  doorOpen: {fileID: 8300000, guid: 0b2b931befd4d9d4bb3a16fb6df21f26, type: 3}
+  doorClose: {fileID: 8300000, guid: 33d15f03f4b5567419d07124cac245de, type: 3}
+  doorLocked: {fileID: 0}
+  keyGrab: {fileID: 8300000, guid: f27bbe5fdfad50e41b1f0c240aa35e39, type: 3}
+  keyDrop: {fileID: 8300000, guid: bd2e078de730d814b9dd855b25c0ee81, type: 3}
+  keyInsert: {fileID: 8300000, guid: cdafa516b756b504b97dc0cb0f0527a1, type: 3}
+  padlockUnlock: {fileID: 8300000, guid: 71f9619f468392647b4843dd9960392e, type: 3}
+  dialArrow: {fileID: 8300000, guid: 3cca0717cc6950e46b80f108be66a894, type: 3}
+  dialDigits:
+  - {fileID: 8300000, guid: f56644e162cae94408d427d01d83091b, type: 3}
+  - {fileID: 8300000, guid: 93ecbf5df09003340858cde72ef16039, type: 3}
+  - {fileID: 8300000, guid: a54444bae88e4154dae1d9e603a00ac1, type: 3}
+  - {fileID: 8300000, guid: 92ee7be42a51d2e45bf11563f83ef1c0, type: 3}
+  - {fileID: 8300000, guid: dae0a8d3fc91a594d8d2bff010736b36, type: 3}
+  - {fileID: 8300000, guid: 9ac6ec4d4c51c9940b467f33b50ae534, type: 3}
+  - {fileID: 8300000, guid: ec2e3acab9e30db449e744617f5b44f2, type: 3}
+  - {fileID: 8300000, guid: 5efb5ea879f62fd40a189314c36d623e, type: 3}
+  - {fileID: 8300000, guid: 061342fd409f7ba4a9e497f5bdc8b066, type: 3}
+  - {fileID: 8300000, guid: 7f5816f76eacac04495db9665cd50958, type: 3}
+  dialSubmit: {fileID: 8300000, guid: 3cca0717cc6950e46b80f108be66a894, type: 3}
+  codeRight: {fileID: 8300000, guid: 612e9acf49da55746b17e5fca80034c6, type: 3}
+  codeWrong: {fileID: 8300000, guid: 4c59fc8bd73b25c4b982733c7115e1e0, type: 3}
+  puzzleSolved: {fileID: 8300000, guid: a6128a600f480fd49a48133316ba2507, type: 3}
+  puzzleFailed: {fileID: 8300000, guid: 4c59fc8bd73b25c4b982733c7115e1e0, type: 3}
+  footsteps:
+  - {fileID: 8300000, guid: 7482add1fee5d6044aa0d0d0dcd63851, type: 3}
+  - {fileID: 8300000, guid: ccba5e591790dda4688e478d364a9857, type: 3}
+  - {fileID: 8300000, guid: 2eb5c1097802bcd46b8a7c602a8eac9a, type: 3}
+  - {fileID: 8300000, guid: 0a0bf87ff8c899d42aff8a8c73437534, type: 3}
+  footstepVolume: 0.35
+  stepLength: 0.7
+  ambience: {fileID: 8300000, guid: e83703afdf076964896850c57996d1bd, type: 3}
+  ambienceVolume: 0.5
+  pianoNotes:
+  - {fileID: 8300000, guid: 1190aa5e6eb70134aa712bb8dc273dbc, type: 3}
+  - {fileID: 8300000, guid: 91a1bec8874c0cc4ab82ad3d67227809, type: 3}
+  - {fileID: 8300000, guid: a6128a600f480fd49a48133316ba2507, type: 3}
+  pianoVolume: 0.5
+  pianoDelay: {x: 15, y: 40}
+  pianoPitch: {x: 0.7, y: 1}
+  pianoDistance: {x: 3, y: 6}
+  effectsVolume: 0.8
+  fullVolumeDistance: 1.5
+  maxDistance: 12

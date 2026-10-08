@@ -252,8 +252,8 @@ namespace EscapeGame.Editor
                 frontCenter + outward * (frontHalfDepth + 0.012f + body.z / 2f) + Vector3.up * (frontHeight / 2f - 0.06f),
                 Quaternion.LookRotation(outward, Vector3.up));
 
-            var gold = Metal("Cadenas laiton (provisoire)", new Color(0.78f, 0.62f, 0.25f));
-            var steel = Metal("Anse acier (provisoire)", new Color(0.75f, 0.75f, 0.78f));
+            var gold = Metal("Cadenas laiton (provisoire)", new Color(0.95f, 0.78f, 0.32f), new Color(0.25f, 0.18f, 0.04f));
+            var steel = Metal("Anse acier (provisoire)", new Color(0.92f, 0.92f, 0.95f), new Color(0.12f, 0.12f, 0.13f));
             var dark = WritingBoardMenu.GetOrCreateMaterial("Serrure (provisoire)", new Color(0.05f, 0.05f, 0.05f));
 
             Part(padlock.transform, "Corps", PrimitiveType.Cube, Vector3.zero, Quaternion.identity, body, gold);
@@ -305,7 +305,7 @@ namespace EscapeGame.Editor
             key.transform.SetPositionAndRotation(new Vector3(above.x, top + 0.005f, above.z),
                 Quaternion.LookRotation(frame.right, Vector3.up) * Quaternion.Euler(0f, 0f, 90f)); // posée à plat
 
-            var brass = Metal("Clé laiton (provisoire)", new Color(0.8f, 0.65f, 0.3f));
+            var brass = Metal("Clé laiton (provisoire)", new Color(1f, 0.84f, 0.35f), new Color(0.35f, 0.26f, 0.06f));
             // Repère : Z de l'anneau vers le bout, Y dans le plan du panneton.
             Part(key.transform, "Anneau", PrimitiveType.Cylinder, Vector3.zero, Quaternion.Euler(0f, 0f, 90f), new Vector3(0.028f, 0.002f, 0.028f), brass);
             Part(key.transform, "Tige", PrimitiveType.Cube, new Vector3(0f, 0f, 0.033f), Quaternion.identity, new Vector3(0.004f, 0.004f, 0.04f), brass);
@@ -350,11 +350,14 @@ namespace EscapeGame.Editor
             go.GetComponent<Renderer>().sharedMaterial = material;
         }
 
-        static Material Metal(string name, Color color)
+        // Métal clair, peu métallique et légèrement lumineux : reste visible dans une pièce sombre.
+        static Material Metal(string name, Color color, Color glow)
         {
             var material = WritingBoardMenu.GetOrCreateMaterial(name, color);
-            material.SetFloat("_Metallic", 0.85f);
-            material.SetFloat("_Smoothness", 0.6f);
+            material.SetFloat("_Metallic", 0.3f);
+            material.SetFloat("_Smoothness", 0.55f);
+            material.SetColor("_EmissionColor", glow);
+            material.EnableKeyword("_EMISSION");
             EditorUtility.SetDirty(material);
             return material;
         }
