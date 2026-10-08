@@ -12,7 +12,7 @@ namespace EscapeGame
     /// <summary>
     /// Menu de début de partie, joué dans la pièce du jeu :
     /// le joueur apparaît assis sur le canapé face à la télé et ne peut que tourner la tête ;
-    /// la télé grésille, puis affiche le logo et le bouton "Jouer". Après "Jouer", la télé s'éteint,
+    /// la télé grésille, puis affiche le logo et les boutons Jouer / Commandes / Quitter. Après "Jouer", la télé s'éteint,
     /// le joueur se lève devant le canapé et peut se déplacer.
     /// La télé, le canapé et le joueur sont trouvés automatiquement : le prefab "Menu principal"
     /// fonctionne dans n'importe quelle scène qui les contient.
@@ -24,6 +24,11 @@ namespace EscapeGame
         public CanvasGroup menuGroup;
         public RawImage staticImage;
         public Button playButton;
+        public Button controlsButton;
+        public Button quitButton;
+        public Button backButton;
+        public GameObject mainPage;
+        public GameObject controlsPage;
 
         [Header("Pièce (vide = trouvé automatiquement)")]
         [Tooltip("La télé. Vide : celle de l'écran TvScreen de la scène, sinon l'objet nommé « TV ».")]
@@ -91,6 +96,13 @@ namespace EscapeGame
             menuGroup.blocksRaycasts = false;
             staticImage.enabled = false;
             playButton.onClick.AddListener(Play);
+            if (controlsButton != null)
+                controlsButton.onClick.AddListener(ShowControls);
+            if (quitButton != null)
+                quitButton.onClick.AddListener(Quit);
+            if (backButton != null)
+                backButton.onClick.AddListener(ShowMain);
+            ShowPage(main: true);
 
             LockPlayer(true);
             StartCoroutine(Intro());
@@ -162,6 +174,30 @@ namespace EscapeGame
             menuGroup.interactable = false;
             menuGroup.blocksRaycasts = false;
             StartCoroutine(PlayRoutine());
+        }
+
+        /// <summary>Bouton "Commandes" : liste des contrôles à la place des boutons.</summary>
+        public void ShowControls() => ShowPage(main: false);
+
+        /// <summary>Bouton "Retour" de la page des commandes.</summary>
+        public void ShowMain() => ShowPage(main: true);
+
+        /// <summary>Bouton "Quitter" : ferme le jeu.</summary>
+        public void Quit()
+        {
+#if UNITY_EDITOR
+            UnityEditor.EditorApplication.isPlaying = false;
+#else
+            Application.Quit();
+#endif
+        }
+
+        void ShowPage(bool main)
+        {
+            if (mainPage != null)
+                mainPage.SetActive(main);
+            if (controlsPage != null)
+                controlsPage.SetActive(!main);
         }
 
         IEnumerator PlayRoutine()

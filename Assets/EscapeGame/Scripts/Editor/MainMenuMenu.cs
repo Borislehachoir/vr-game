@@ -99,7 +99,10 @@ namespace EscapeGame.Editor
         static GameObject BuildPrefab()
         {
             var font = GetOrCreateFontAsset();
-            var logo = GetSprite(k_LogoPath);
+            // Texture affichée telle quelle (RawImage) : pas besoin de réglage d'import "Sprite".
+            var logo = AssetDatabase.LoadAssetAtPath<Texture2D>(k_LogoPath);
+            if (logo == null)
+                Debug.LogWarning($"Menu principal : logo introuvable : {k_LogoPath}");
 
             var root = new GameObject(k_RootName);
             try
@@ -128,7 +131,7 @@ namespace EscapeGame.Editor
                 menuPage.transform.SetParent(screen, false);
                 Stretch((RectTransform)menuPage.transform);
                 menu.menuGroup = menuPage.GetComponent<CanvasGroup>();
-                menu.playButton = BuildMenuPage(menuPage.transform, font, logo);
+                BuildMenuPage(menuPage.transform, menu, font, logo);
 
                 // Neige par-dessus tout (la texture est générée au lancement).
                 var noise = new GameObject("Neige", typeof(RectTransform), typeof(RawImage));
@@ -147,20 +150,24 @@ namespace EscapeGame.Editor
             }
         }
 
-        static Button BuildMenuPage(Transform page, TMP_FontAsset titleFont, Sprite logo)
+        static void BuildMenuPage(Transform page, MainMenu menu, TMP_FontAsset titleFont, Texture2D logo)
         {
             var bg = NewImage(page, "Fond", new Color32(10, 11, 13, 255));
             Stretch(bg.rectTransform);
+            bg.raycastTarget = true; // bloque les rayons derrière l'écran
 
             // Logo à gauche (la porte remplace le « o », la clé le « t »), légèrement teinté crème.
             const float logoHeight = 800f;
             if (logo != null)
             {
-                var image = NewImage(page, "Logo", k_Cream);
-                image.sprite = logo;
-                image.preserveAspect = true;
-                var width = logoHeight * logo.rect.width / logo.rect.height;
-                Place(image.rectTransform, new Vector2(-360f, 0f), new Vector2(width, logoHeight));
+                var go = new GameObject("Logo", typeof(RectTransform), typeof(RawImage));
+                go.layer = page.gameObject.layer;
+                go.transform.SetParent(page, false);
+                var image = go.GetComponent<RawImage>();
+                image.texture = logo;
+                image.color = k_Cream;
+                image.raycastTarget = false;
+                Place(image.rectTransform, new Vector2(-360f, 0f), new Vector2(logoHeight * logo.width / logo.height, logoHeight));
             }
             else
             {
@@ -172,22 +179,63 @@ namespace EscapeGame.Editor
                 Place(title.rectTransform, new Vector2(-360f, 0f), new Vector2(720f, logoHeight));
             }
 
-            // À droite : sous-titre et bouton Jouer.
+            // À droite : page principale (Jouer / Commandes / Quitter) ou page des commandes.
             const float right = 400f;
-            var subtitle = NewText(page, "Sous-titre", "ESCAPE GAME VR", 34, k_Muted);
+            var main = NewPage(page, "Page principale");
+            var subtitle = NewText(main, "Sous-titre", "ESCAPE GAME VR", 34, k_Muted);
             subtitle.characterSpacing = 25f;
             subtitle.alignment = TextAlignmentOptions.Center;
-            Place(subtitle.rectTransform, new Vector2(right, 110f), new Vector2(600f, 50f));
-            var lineLeft = NewImage(page, "Filet gauche", k_Amber);
-            Place(lineLeft.rectTransform, new Vector2(right - 270f, 110f), new Vector2(60f, 3f));
-            var lineRight = NewImage(page, "Filet droit", k_Amber);
-            Place(lineRight.rectTransform, new Vector2(right + 270f, 110f), new Vector2(60f, 3f));
+            Place(subtitle.rectTransform, new Vector2(right, 250f), new Vector2(600f, 50f));
+            Place(NewImage(main, "Filet gauche", k_Amber).rectTransform, new Vector2(right - 270f, 250f), new Vector2(60f, 3f));
+            Place(NewImage(main, "Filet droit", k_Amber).rectTransform, new Vector2(right + 270f, 250f), new Vector2(60f, 3f));
 
-            // Bouton Jouer : cadre ambré, qui se remplit quand le rayon le survole.
-            var frame = NewImage(page, "Jouer", k_Amber);
+            menu.playButton = NewButton(main, "Jouer", "JOUER", new Vector2(right, 100f));
+            menu.controlsButton = NewButton(main, "Commandes", "COMMANDES", new Vector2(right, -35f));
+            menu.quitButton = NewButton(main, "Quitter", "QUITTER", new Vector2(right, -170f));
+
+            var hint = NewText(main, "Aide", "Visez un bouton avec la manette\net appuyez sur la gâchette", 26, k_Dim);
+            hint.alignment = TextAlignmentOptions.Center;
+            Place(hint.rectTransform, new Vector2(right, -310f), new Vector2(600f, 80f));
+
+            var controls = NewPage(page, "Page commandes");
+            var heading = NewText(controls, "Titre", "COMMANDES", 40, k_Muted);
+            heading.characterSpacing = 25f;
+            heading.alignment = TextAlignmentOptions.Center;
+            Place(heading.rectTransform, new Vector2(right, 280f), new Vector2(600f, 60f));
+            var amberHex = ColorUtility.ToHtmlStringRGB(k_Amber);
+            var help = NewText(controls, "Liste",
+                $"<color=#{amberHex}>Joystick gauche</color>\nse déplacer\n\n" +
+                $"<color=#{amberHex}>Joystick droit</color>\ntourner\n\n" +
+                $"<color=#{amberHex}>Grip</color> (bouton latéral)\nattraper un objet\n\n" +
+                $"<color=#{amberHex}>Gâchette</color>\ninteragir (boutons, digicode)", 30, k_Cream);
+            help.alignment = TextAlignmentOptions.Center;
+            Place(help.rectTransform, new Vector2(right, 30f), new Vector2(640f, 420f));
+            menu.backButton = NewButton(controls, "Retour", "RETOUR", new Vector2(right, -300f));
+            controls.gameObject.SetActive(false);
+
+            menu.mainPage = main.gameObject;
+            menu.controlsPage = controls.gameObject;
+        }
+
+        static RectTransform NewPage(Transform parent, string name)
+        {
+            var page = new GameObject(name, typeof(RectTransform)).GetComponent<RectTransform>();
+            page.gameObject.layer = parent.gameObject.layer;
+            page.SetParent(parent, false);
+            Stretch(page);
+            return page;
+        }
+
+        // Bouton à cadre ambré, dont le fond s'allume quand le rayon le survole.
+        static Button NewButton(Transform parent, string name, string text, Vector2 position)
+        {
+            var size = new Vector2(420f, 100f);
+            var frame = NewImage(parent, name, k_Amber);
             frame.sprite = AssetDatabase.GetBuiltinExtraResource<Sprite>("UI/Skin/UISprite.psd");
             frame.type = Image.Type.Sliced;
-            Place(frame.rectTransform, new Vector2(right, -20f), new Vector2(420f, 110f));
+            frame.raycastTarget = true; // c'est lui que le rayon vise
+            Place(frame.rectTransform, position, size);
+
             var button = frame.gameObject.AddComponent<Button>();
             button.targetGraphic = frame;
             var colors = button.colors;
@@ -198,28 +246,23 @@ namespace EscapeGame.Editor
             colors.fadeDuration = 0.08f;
             button.colors = colors;
 
-            // Cadre fixe (4 traits) : reste bien visible, alors que le fond du bouton ne s'allume qu'au survol.
-            var w = frame.rectTransform.sizeDelta.x;
-            var h = frame.rectTransform.sizeDelta.y;
-            foreach (var (pos, size) in new[]
+            // Cadre fixe (4 traits) : reste visible, alors que le fond du bouton ne s'allume qu'au survol.
+            foreach (var (pos, lineSize) in new[]
                      {
-                         (new Vector2(0f, h / 2f), new Vector2(w, 3f)), (new Vector2(0f, -h / 2f), new Vector2(w, 3f)),
-                         (new Vector2(-w / 2f, 0f), new Vector2(3f, h)), (new Vector2(w / 2f, 0f), new Vector2(3f, h)),
+                         (new Vector2(0f, size.y / 2f), new Vector2(size.x, 3f)), (new Vector2(0f, -size.y / 2f), new Vector2(size.x, 3f)),
+                         (new Vector2(-size.x / 2f, 0f), new Vector2(3f, size.y)), (new Vector2(size.x / 2f, 0f), new Vector2(3f, size.y)),
                      })
-                Place(NewImage(frame.transform, "Cadre", k_Amber).rectTransform, pos, size);
+            {
+                var line = NewImage(frame.transform, "Cadre", k_Amber);
+                line.raycastTarget = false;
+                Place(line.rectTransform, pos, lineSize);
+            }
 
-            var label = NewText(frame.transform, "Label", "JOUER", 56, k_Cream);
-            label.characterSpacing = 15f;
+            var label = NewText(frame.transform, "Label", text, 46, k_Cream);
+            label.characterSpacing = 12f;
             label.alignment = TextAlignmentOptions.Center;
+            label.raycastTarget = false;
             Stretch(label.rectTransform);
-
-            var hint = NewText(page, "Aide", "Visez « Jouer » avec la manette\net appuyez sur la gâchette", 26, k_Dim);
-            hint.alignment = TextAlignmentOptions.Center;
-            Place(hint.rectTransform, new Vector2(right, -150f), new Vector2(600f, 80f));
-
-            // Seuls le fond (bloque les rayons derrière l'écran) et le bouton reçoivent les rayons.
-            foreach (var graphic in page.GetComponentsInChildren<Graphic>(true))
-                graphic.raycastTarget = graphic == bg || graphic == frame;
             return button;
         }
 
@@ -230,6 +273,7 @@ namespace EscapeGame.Editor
             go.transform.SetParent(parent, false);
             var image = go.GetComponent<Image>();
             image.color = color;
+            image.raycastTarget = false;
             return image;
         }
 
@@ -243,6 +287,7 @@ namespace EscapeGame.Editor
             text.fontSize = size;
             text.color = color;
             text.richText = true;
+            text.raycastTarget = false;
             return text;
         }
 
@@ -283,24 +328,6 @@ namespace EscapeGame.Editor
             AssetDatabase.AddObjectToAsset(asset.material, asset);
             AssetDatabase.SaveAssets();
             return asset;
-        }
-
-        static Sprite GetSprite(string path)
-        {
-            // Le mode "Single" est indispensable : sans lui, l'image n'a pas de Sprite et le logo n'apparaît pas.
-            if (AssetImporter.GetAtPath(path) is TextureImporter importer &&
-                (importer.textureType != TextureImporterType.Sprite || importer.spriteImportMode != SpriteImportMode.Single))
-            {
-                importer.textureType = TextureImporterType.Sprite;
-                importer.spriteImportMode = SpriteImportMode.Single;
-                importer.alphaIsTransparency = true;
-                importer.mipmapEnabled = true; // vu de loin dans le casque : évite le scintillement
-                importer.SaveAndReimport();
-            }
-            var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(path);
-            if (sprite == null)
-                Debug.LogWarning($"Menu principal : image introuvable ou illisible : {path}");
-            return sprite;
         }
     }
 }
