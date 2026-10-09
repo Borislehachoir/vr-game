@@ -111,6 +111,7 @@ namespace EscapeGame
                 quitButton.onClick.AddListener(Quit);
             if (backButton != null)
                 backButton.onClick.AddListener(ShowMain);
+            ControlsPageImage.Setup(controlsPage);
             ShowPage(main: true);
 
             LockPlayer(true);
@@ -207,6 +208,7 @@ namespace EscapeGame
                 mainPage.SetActive(main);
             if (controlsPage != null)
                 controlsPage.SetActive(!main);
+            ControlsPageImage.ShowLogo(controlsPage, main);
         }
 
         IEnumerator PlayRoutine()

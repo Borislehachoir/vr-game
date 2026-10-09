@@ -28,8 +28,14 @@ namespace EscapeGame
     {
         [Tooltip("Distance (m) entre les yeux et le menu.")]
         public float distance = 1.1f;
-        [Tooltip("Largeur (m) du menu.")]
+        [Tooltip("Largeur (m) du menu à cette distance (il rétrécit s'il doit se rapprocher, pour garder la même taille à l'œil).")]
         public float width = 0.9f;
+        [Tooltip("Distance (m) minimale : devant un mur, le menu se rapproche jusque-là.")]
+        public float minDistance = 0.45f;
+        [Tooltip("Le menu revient devant le regard quand on tourne la tête de plus de cet angle (°).")]
+        public float followAngle = 25f;
+        [Tooltip("Vitesse à laquelle le menu suit le regard.")]
+        public float followSpeed = 5f;
         [Tooltip("Attente (s) entre la résolution de l'énigme finale et l'écran de fin.")]
         public float endDelay = 2f;
 
@@ -43,6 +49,8 @@ namespace EscapeGame
         Button m_ResumeButton, m_ControlsButton, m_MenuButton, m_QuitButton;
         TMP_Text m_TimerText;
         TMP_Text m_EndText;
+        GameObject m_Subtitle;
+        bool m_Following;
         bool m_Paused;
         bool m_Finished;
         bool m_WasPressed;
@@ -202,6 +210,20 @@ namespace EscapeGame
                 Unfreeze();
             ShowMenu(end: true);
             Freeze();
+            PlayEndVoice();
+        }
+
+        // Voix de fin, qui doit s'entendre malgré la pause du son (AudioListener.pause) pendant l'écran de fin.
+        void PlayEndVoice()
+        {
+            if (m_Settings == null || m_Settings.endVoice == null)
+                return;
+            var voice = gameObject.AddComponent<AudioSource>();
+            voice.clip = m_Settings.endVoice;
+            voice.volume = m_Settings.endVoiceVolume;
+            voice.spatialBlend = 0f; // voix "dans la tête" du joueur
+            voice.ignoreListenerPause = true;
+            voice.Play();
         }
 
         void BackToMenu()
@@ -237,6 +259,8 @@ namespace EscapeGame
             m_EndText.gameObject.SetActive(end);
             m_EndText.text = string.Format(m_Settings.endMessage, FormatTime(m_Elapsed));
             m_TimerText.gameObject.SetActive(!end);
+            if (m_Subtitle != null)
+                m_Subtitle.SetActive(!end); // pas de « PAUSE » sur l'écran de fin
             m_TimerText.text = string.Format(m_Settings.timerLabel, FormatTime(m_Elapsed));
 
             m_Menu.SetActive(true);
@@ -311,7 +335,11 @@ namespace EscapeGame
             var subtitle = FindDeep(m_Menu.transform, "Sous-titre");
             TMP_Text subtitleText = null;
             if (subtitle != null && subtitle.TryGetComponent(out subtitleText))
+            {
                 subtitleText.text = m_Settings.subtitle;
+                m_Subtitle = subtitle.gameObject;
+            }
+            ControlsPageImage.Setup(m_ControlsPage, m_Settings);
             var list = FindDeep(m_Menu.transform, "Liste");
             if (list != null && list.TryGetComponent<TMP_Text>(out var listText) && !string.IsNullOrEmpty(m_Settings.extraControls))
                 listText.text += m_Settings.extraControls;
@@ -351,22 +379,77 @@ namespace EscapeGame
 
         void PlaceInFrontOfPlayer()
         {
-            var origin = FindAnyObjectByType<XROrigin>();
-            var cam = origin != null ? origin.Camera : Camera.main;
-            if (cam == null || m_Screen == null)
+            m_Following = false;
+            if (TryGetTarget(out var head, out var position, out var rotation, out var scale))
+            {
+                m_Screen.SetPositionAndRotation(position, rotation);
+                m_Screen.localScale = scale;
+            }
+        }
+
+        // Le menu reste devant le regard : s'il sort trop du champ de vision, il y revient en douceur.
+        void LateUpdate()
+        {
+            if (m_Menu == null || !m_Menu.activeSelf || !TryGetTarget(out var head, out var position, out var rotation, out var scale))
                 return;
 
-            var head = cam.transform;
+            var toMenu = Vector3.ProjectOnPlane(m_Screen.position - head.position, Vector3.up);
+            var toTarget = Vector3.ProjectOnPlane(position - head.position, Vector3.up);
+            var angle = Vector3.Angle(toMenu, toTarget);
+            if (angle > followAngle)
+                m_Following = true;
+            // Un mur s'est glissé entre le joueur et le menu : on le rapproche aussi.
+            var tooFar = toMenu.magnitude > toTarget.magnitude + 0.05f;
+            if (!m_Following && !tooFar)
+                return;
+
+            var t = 1f - Mathf.Exp(-followSpeed * Time.unscaledDeltaTime); // le temps est arrêté pendant la pause
+            m_Screen.SetPositionAndRotation(Vector3.Lerp(m_Screen.position, position, t), Quaternion.Slerp(m_Screen.rotation, rotation, t));
+            m_Screen.localScale = Vector3.Lerp(m_Screen.localScale, scale, t);
+            if (angle < 2f)
+                m_Following = false;
+        }
+
+        // Place idéale : devant le regard, à hauteur des yeux, et devant les murs ou meubles qui seraient plus près.
+        bool TryGetTarget(out Transform head, out Vector3 position, out Quaternion rotation, out Vector3 scale)
+        {
+            position = default;
+            rotation = default;
+            scale = default;
+            var origin = FindAnyObjectByType<XROrigin>();
+            var cam = origin != null ? origin.Camera : Camera.main;
+            head = cam != null ? cam.transform : null;
+            if (head == null || m_Screen == null)
+                return false;
+
             var forward = Vector3.ProjectOnPlane(head.forward, Vector3.up);
             if (forward.sqrMagnitude < 0.001f)
                 forward = Vector3.ProjectOnPlane(head.up, Vector3.up);
             forward.Normalize();
 
-            // Le Canvas se lit en regardant le long de son axe Z.
-            m_Screen.SetPositionAndRotation(head.position + forward * distance - Vector3.up * 0.05f, Quaternion.LookRotation(forward, Vector3.up));
+            // Rayons vers le centre et les deux bords du menu : il se pose devant le premier obstacle.
+            var d = distance;
+            var halfAngle = Mathf.Atan2(width / 2f, distance) * Mathf.Rad2Deg;
+            foreach (var yaw in new[] { 0f, -halfAngle, halfAngle })
+            {
+                var direction = Quaternion.AngleAxis(yaw, Vector3.up) * forward;
+                var range = distance / Mathf.Cos(yaw * Mathf.Deg2Rad);
+                foreach (var hit in Physics.RaycastAll(head.position, direction, range, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+                {
+                    if (origin != null && hit.collider.transform.IsChildOf(origin.transform))
+                        continue; // le corps et les mains du joueur
+                    d = Mathf.Min(d, hit.distance * Mathf.Cos(yaw * Mathf.Deg2Rad) - 0.1f);
+                }
+            }
+            d = Mathf.Max(minDistance, d);
+
+            // Le Canvas se lit en regardant le long de son axe Z. Plus près = plus petit, même taille à l'œil.
+            position = head.position + forward * d - Vector3.up * 0.05f;
+            rotation = Quaternion.LookRotation(forward, Vector3.up);
             var parentScale = m_Screen.parent != null ? m_Screen.parent.lossyScale.x : 1f;
-            var scale = width / Mathf.Max(1f, m_Screen.sizeDelta.x) / Mathf.Max(1e-6f, parentScale);
-            m_Screen.localScale = new Vector3(scale, scale, scale);
+            var s = width * (d / distance) / Mathf.Max(1f, m_Screen.sizeDelta.x) / Mathf.Max(1e-6f, parentScale);
+            scale = new Vector3(s, s, s);
+            return true;
         }
 
         void ShowPage(bool main)
@@ -375,6 +458,7 @@ namespace EscapeGame
                 m_MainPage.SetActive(main);
             if (m_ControlsPage != null)
                 m_ControlsPage.SetActive(!main);
+            ControlsPageImage.ShowLogo(m_ControlsPage, main);
         }
 
         static void Place(Button button, float y)

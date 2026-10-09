@@ -13,6 +13,9 @@ namespace EscapeGame
         [Tooltip("Scène chargée par « Menu principal » / « Retour au menu ».")]
         public string menuScene = "Menu";
 
+        [Tooltip("Image des commandes, affichée sur la page « Commandes » du menu principal et de la pause.")]
+        public Texture2D controlsImage;
+
         [Header("Pause")]
         [Tooltip("Texte du bouton « Jouer » dans la pause.")]
         public string resumeLabel = "REPRENDRE";
@@ -28,5 +31,8 @@ namespace EscapeGame
         [Tooltip("{0} = temps final.")]
         [TextArea] public string endMessage = "Bravo !\nTu as fini l'escape game en <color=#D6A05C>{0}</color>";
         public string backToMenuLabel = "RETOUR AU MENU";
+        [Tooltip("Voix jouée quand l'écran de fin apparaît.")]
+        public AudioClip endVoice;
+        [Range(0f, 1f)] public float endVoiceVolume = 1f;
     }
 }

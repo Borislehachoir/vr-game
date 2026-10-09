@@ -13,6 +13,9 @@ MonoBehaviour:
   m_Name: Menu pause
   m_EditorClassIdentifier: 
   menuPrefab: {fileID: 7965115931939902477, guid: c1ba11f8f00be1f499dadb7aa6c7c929, type: 3}
+  controlsImage: {fileID: 2800000, guid: 527175006c6c1544782b264571d227b8, type: 3}
   resumeLabel: REPRENDRE
   subtitle: PAUSE
   extraControls: "\n\n<color=#D6A05C>Bouton menu</color> (manette gauche)\npause"
+  endVoice: {fileID: 8300000, guid: f9a4de1b756c4f7582b1e59c64fadf2a, type: 3}
+  endVoiceVolume: 1

@@ -1489,6 +1489,7 @@ MonoBehaviour:
   solution: 679
   oneDigitAtATime: 1
   anyOrder: 1
+  endsGame: 1
   digitTexts:
   - {fileID: 291524412}
   - {fileID: 1482612261}
